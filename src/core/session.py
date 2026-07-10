@@ -184,8 +184,9 @@ class Session(requests.Session):
             if downloaded and response.status_code == 200:
                 downloaded = 0
                 temp_path.unlink()
-                        
-            response.raise_for_status()
+            
+            if response.status_code not in (200, 203):
+                return
                 
             mode = "ab" if downloaded else "wb"
             
