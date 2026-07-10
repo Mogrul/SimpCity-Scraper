@@ -3,6 +3,7 @@ import requests
 from pathlib import Path
 from http.cookiejar import MozillaCookieJar
 import json
+import time
 
 from bs4 import BeautifulSoup
 
@@ -45,7 +46,8 @@ class Session(requests.Session):
     def build_request(
             self,
             url: str,
-            referer: str = None
+            referer: str = None,
+            origin: str = None
     ) -> dict:
         # Load cookies if not loaded for domain
         domain_name = get_domain_name(url)
@@ -59,22 +61,63 @@ class Session(requests.Session):
         if referer:
             headers["Referer"] = referer
         
+        if origin:
+            headers["Origin"] = origin
+        
         return headers
+    
+    def post(
+            self,
+            url: str,
+            payload: dict,
+            referer: str = None,
+            origin: str = None,
+            timeout = 30
+    ) -> dict:
+        headers = self.build_request(url, referer, origin)
+        headers["Content-Type"] = "application/json"
+        headers["Accept-Encoding"] = "gzip, deflate, br, zstd"
+        
+        reply = super().post(url, json = payload)
+        
+        if reply.status_code == 200:
+            self.logger.info(f"Successful reply from {url}")
+            
+            try:
+                return reply.json()
+
+            except json.JSONDecodeError:
+                self.logger.error(f"Failed to get JSON from {url}")
+                return None
+        
+        else:
+            self.logger.warning(f"Failed reply from {url} with status {reply.status_code}")
+            return None
     
     def get_json(
             self,
             url: str,
             referer: str = None,
+            params: dict = None,
             timeout = 30
     ) -> dict:
         headers = self.build_request(url, referer)
         
         # Commit request to url
-        reply = super().get(
-            url,
-            headers = headers,
-            timeout = timeout
-        )
+        if params:
+            reply = super().get(
+                url,
+                headers = headers,
+                timeout = timeout,
+                params = params
+            )
+            
+        else:
+            reply = super().get(
+                url,
+                headers = headers,
+                timeout = timeout
+            )
         
         if reply.status_code == 200:
             self.logger.info(f"Successful reply from {url}")
@@ -114,7 +157,11 @@ class Session(requests.Session):
             self.logger.warning(f"Failed reply from {url} with status {reply.status_code}")
             return None
     
-    def download_file(self, url: str, destination: Path) -> tuple[str, Path]:
+    def download_file(
+            self,
+            url: str,
+            destination: Path
+    ) -> tuple[str, Path]:
         if destination.exists():
             return (url, destination)
         
@@ -130,12 +177,14 @@ class Session(requests.Session):
         # Create temp path base paths
         temp_path.parent.mkdir(parents = True, exist_ok = True)
         
+        start = time.time()
+        downloaded_now = downloaded
         with super().get(url, headers = headers, stream = True) as response:
             # Server ignored Range request, restart download
             if downloaded and response.status_code == 200:
                 downloaded = 0
                 temp_path.unlink()
-
+                        
             response.raise_for_status()
                 
             mode = "ab" if downloaded else "wb"
@@ -144,7 +193,15 @@ class Session(requests.Session):
                 for chunk in response.iter_content(chunk_size = 1024 * 1024):
                     if chunk:
                         file.write(chunk)
-        
+                    
+                        downloaded_now += len(chunk)
+
+                        if downloaded_now // (10 * 1024 * 1024) > downloaded // (10 * 1024 * 1024):
+                            elapsed = time.time() - start
+                            speed = downloaded_now / elapsed / (1024 * 1024)
+                            self.logger.info(f"Downloaded {downloaded_now / (1024*1024):.1f} MB ({speed:.2f} MB/s)")
+                    
         temp_path.rename(destination)
+        self.logger.info(f"Downloaded {url} -> {destination}")
         return (url, destination)
         

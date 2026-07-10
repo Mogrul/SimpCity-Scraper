@@ -1,5 +1,6 @@
 import logging
 from datetime import datetime, timedelta
+from pathlib import Path
 
 from bs4 import BeautifulSoup, Tag
 
@@ -37,6 +38,10 @@ class SimpCity(Site):
                 continue
             
             self.scrape_posts(page)
+        
+        self.duplication.check_duplicate_images(
+            path = Path("Downloads", self.username)
+        )
 
     def scrape_posts(self, page: BeautifulSoup):
         posts = page.find_all("div", class_ = "message-cell--main")
@@ -74,6 +79,7 @@ class SimpCity(Site):
                     references = self.references
                 )
                 self.site.scrape()
+                
     
     def get_page_with_count(
             self,

@@ -30,6 +30,11 @@ class GoonBox(Site):
         page = self.get_api_url_by_page(api_url, 1)
         max_page_count = self.get_max_page_count(page)
         
+        if max_page_count == 0:
+            return
+        
+        base_parent_site = None
+        
         # For every page in the JSON reply        
         for page_num in range(1, max_page_count + 1):
             # Get new page JSON if not first page
@@ -42,7 +47,7 @@ class GoonBox(Site):
                 continue
             
             # For every image in the JSON response
-            with ThreadPoolExecutor(max_workers = 5) as executor:
+            with ThreadPoolExecutor(max_workers = 5, thread_name_prefix = "site.goonbox.thread") as executor:
                 futures = [
                     executor.submit(self.handle_image, image)
                     for image in images
@@ -60,9 +65,10 @@ class GoonBox(Site):
                     if not result:
                         continue
                     
-                    url, destination = result
+                    url, destination, base_parent = result
                     
-                    self.logger.info(f"Downloaded {url} -> {destination}")
+                    if not base_parent_site:
+                        base_parent_site = base_parent
     
     def handle_image(self, image: dict) -> tuple[str, Path]:
         if type(image) is not dict:
@@ -113,6 +119,9 @@ class GoonBox(Site):
         return reply
     
     def get_max_page_count(self, reply: dict) -> int:
+        if not reply:
+            return 0
+        
         pagination = reply.get("pagination")
         
         if not pagination:

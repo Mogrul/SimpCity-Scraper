@@ -1,6 +1,7 @@
 import importlib
 import inspect
 import pkgutil
+from pathlib import Path
 
 import tldextract
 
@@ -30,3 +31,14 @@ def get_domain_name(url: str) -> str:
     extracted = tldextract.extract(url)
     
     return extracted.domain
+
+def is_image(path: Path) -> bool:
+    if not path.is_file():
+        return False
+    
+    img_extensions = {".jpg", ".jpeg", ".png", ".webp"}
+    
+    if path.suffix.lower() in img_extensions:
+        return True
+    
+    return False
