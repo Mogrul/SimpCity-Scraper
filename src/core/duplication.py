@@ -25,6 +25,10 @@ class Duplication:
         
         self._initialised = True
 
+    def clear(self):
+        self.hashes = {}
+        self.deleted = set()
+
     def check_duplicate_images(
             self,
             path: Path,

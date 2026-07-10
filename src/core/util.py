@@ -18,10 +18,11 @@ def get_path_of_file(post: Post, file_name: str, username: str) -> Path:
     post_path = get_post_path(post, username)
     file = Path(file_name)
     file_id = str(uuid3(NAMESPACE_DNS, file_name))[:8]
+    posted_at = post.posted_at
     
     return Path(
         post_path,
-        f"{file_id}{file.suffix}"
+        f"[{posted_at.year}-{posted_at.month:02d}-{posted_at.day:02d}] {file_id}{file.suffix}"
     )
 
 def get_username_from_url(url: str):

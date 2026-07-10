@@ -63,6 +63,7 @@ class Website:
                 next_report = 1024 * 1024
 
             elif response.status_code not in (200, 206):
+                self.logger.warning(f"Failed with status {response.status_code}: {url}")
                 return
 
             with open(temp_file_path, mode) as f:

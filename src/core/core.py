@@ -8,11 +8,13 @@ from .session import Session
 from .models import Author, Post
 from .websites import WEBSITES
 from .util import get_username_from_url
+from .duplication import Duplication
 
 class Core:
     def __init__(self):
         self.session = Session()
         self.logger = logging.getLogger("core")
+        self.duplication = Duplication()
     
     def scrape(self, url: str):
         self.logger.info(f"Scraping: {url}")
@@ -27,6 +29,8 @@ class Core:
             
             posts = self.get_posts_in_page(page)
             self.scrape_posts(posts, username)
+        
+        self.duplication.clear()
     
     def scrape_posts(self, posts: list[Post], username: str):
         for post in posts:            
