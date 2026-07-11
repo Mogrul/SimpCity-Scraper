@@ -13,11 +13,11 @@ class WebSite:
             self,
             username: str,
             post_map: dict[UUID, Post],
-            posts: dict[UUID, Post],
+            posts: dict[UUID, list[str]],
             base_path: Path,
             chunk_size: int,
             timeout: int,
-            logger = logging.Logger,
+            logger: logging.Logger | None = None,
             max_workers = 10,
     ):
         self.username = username
@@ -28,7 +28,7 @@ class WebSite:
             timeout = timeout
         )
         self.max_workers = max_workers
-        self.logger = logger
+        self.logger = logging.getLogger(__name__) if not logger else logger
         self.base_path = base_path
         
         self.link_map = self.create_link_map()

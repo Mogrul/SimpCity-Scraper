@@ -12,7 +12,7 @@ from .support import SUPPORTED_SITES
 from .websites import WEBSITES
 from .web import Web
 from .models import Post, Thread
-from .util import is_valid_url, to_dict
+from .util import is_valid_url, to_dict, get_domain_name
 from .duplication import Duplication
 
 class SimpCity:
@@ -26,7 +26,7 @@ class SimpCity:
         # Args
         self.workers = args.workers
         self.remove_duplicates = bool(args.remove_duplicates)
-        self.urls: list[ParseResult] = self.clean_urls(args.urls)
+        self.urls: list[str] = self.clean_urls(args.urls)
         self.output = args.output
         self.chunk_size = args.chunk_size
         self.timeout = args.timeout
@@ -65,9 +65,8 @@ class SimpCity:
             
             if url.endswith("/"):
                 url = url[:-1]
-                parsed = urlparse(url)
                 
-            scrapable_urls.append(parsed)
+            scrapable_urls.append(url)
 
         return scrapable_urls
     
@@ -76,13 +75,13 @@ class SimpCity:
             username = self.get_username(url).capitalize()
             soup = self.web.get(url)
             
-            if not soup:
+            if not isinstance(soup, BeautifulSoup):
                 continue
             
             max_page_count = self.get_max_page_count(soup)
             
             thread = Thread(
-                url = url.geturl(),
+                url = url,
                 username = username,
                 page_count = max_page_count
             )
@@ -92,6 +91,9 @@ class SimpCity:
                 
                 if page_num != 1:
                     soup = self.web.get(page_url, referer = url)
+
+                if not isinstance(soup, BeautifulSoup):
+                    continue
                 
                 posts = self.get_posts_in_page(soup)
                 thread.posts.extend(posts)
@@ -125,19 +127,19 @@ class SimpCity:
                 base_path = self.output,
                 max_workers = self.workers,
                 chunk_size = self.chunk_size,
-                timeout = self.timeout
+                timeout = self.timeout,
+                logger = None
             )
             site.scrape()
 
-    def get_username(self, url: ParseResult) -> str:
-        path = url.path
-        thread_name = path.split("/")[-1]
+    def get_username(self, url: str) -> str:
+        thread_name = url.split("/")[-1]
         username = thread_name.split("-")[0]
         
         return username
     
-    def get_page_url(self, url: ParseResult, page_num: int) -> ParseResult:
-        return urlparse(url.geturl() + f"/page-{page_num}")
+    def get_page_url(self, url: str, page_num: int) -> str:
+        return url + f"/page-{page_num}"
     
     def get_max_page_count(self, soup: BeautifulSoup) -> int:
         page_navs_main = soup.find("ul", class_ = "pageNav-main")
@@ -180,51 +182,75 @@ class SimpCity:
     
     def get_post_date(self, cell: Tag) -> datetime:
         attribution = cell.find("header", class_ = "message-attribution message-attribution--split")
+        
+        if not attribution: return datetime.now()
         time = attribution.find("time", class_ = "u-dt")
+        
+        if not time: return datetime.now()
         timestamp = time.get("data-timestamp")
         
+        if not isinstance(timestamp, str):
+            return datetime.now()
+        
+        try:
+            timestamp = int(timestamp)
+        
+        except ValueError:
+            return datetime.now()
+
         return datetime.fromtimestamp(int(timestamp))
     
     def get_post_external_links(self, cell: Tag) -> dict[str, list[str]]:
         external_links: dict[str, list[str]] = defaultdict(list)
         
         content = cell.find("div", class_ = "message-content")
+        if not content: return external_links
         link_elements = content.find_all("a", class_ = "link--external")
         iframes = content.find_all("iframe", class_ = "saint-iframe")
         
         for link_element in link_elements:
             href = link_element.get("href")
+            if not isinstance(href, str):
+                continue
+            
             if not is_valid_url(href):
                 continue
             
-            parsed: ParseResult = urlparse(href)
-            if parsed.netloc not in SUPPORTED_SITES:
+            domain_name = get_domain_name(href)
+            if domain_name not in SUPPORTED_SITES:
                 continue
                         
-            match parsed.netloc:
-                case "goonbox.cr":
+            match domain_name:
+                case "goonbox":
                     img_element = link_element.find("img")
                     
                     if not img_element:
-                        external_links[parsed.netloc].append(href)
+                        external_links[domain_name].append(href)
                         continue
                     
                     img_src = img_element.get("src")
+                    
+                    if not isinstance(img_src, str):
+                        continue
+                    
                     img_src = img_src.replace(".md", "")
                     
-                    external_links[parsed.netloc].append(img_src)
+                    external_links[domain_name].append(img_src)
                     continue
 
-            external_links[parsed.netloc].append(href)
+            external_links[domain_name].append(href)
         
         for iframe in iframes:
             src = iframe.get("src")
-            parsed = urlparse(src)
-            
-            if parsed.netloc not in SUPPORTED_SITES:
+            if not isinstance(src, str):
                 continue
             
-            external_links[parsed.netloc].append(src)
+            domain_name = get_domain_name(src)
+            
+            if domain_name not in SUPPORTED_SITES:
+                continue
+            
+            external_links[domain_name].append(src)
         
         return to_dict(external_links)
     
