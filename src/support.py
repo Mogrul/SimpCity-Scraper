@@ -1,5 +1,4 @@
 SUPPORTED_SITES = (
-    "simpcity",
-    "goonbox",
-    "turbo"
+    "simpcity.cr",
+    "goonbox.cr"
 )
