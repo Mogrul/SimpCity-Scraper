@@ -11,7 +11,7 @@ from bs4 import BeautifulSoup
 class Web(requests.Session):
     _instance = None
     
-    def __new__(cls):
+    def __new__(cls, *args, **kwargs):
         if cls._instance is None:
             cls._instance = super().__new__(cls)
         
@@ -19,7 +19,8 @@ class Web(requests.Session):
     
     def __init__(
             self,
-            chunk_size = 1_048_576
+            chunk_size: int,
+            timeout: int
     ):
         if getattr(self, "_initialised", False):
             return
@@ -28,6 +29,7 @@ class Web(requests.Session):
         self.logger = logging.getLogger("web")
         self.parsed_cookies: set[str] = set()
         self.chunk_size = chunk_size
+        self.timeout = timeout
         
         self.load_headers()
         
@@ -87,8 +89,7 @@ class Web(requests.Session):
             referer: str = None,
             origin: str = None,
             params: dict = None,
-            return_dict = False,
-            timeout = 30
+            return_dict = False
     ) -> BeautifulSoup | dict | None:
         headers = self.build_headers(url, referer, origin)
         url_str = url.geturl()
@@ -96,7 +97,7 @@ class Web(requests.Session):
         reply = super().get(
             url_str,
             headers = headers,
-            timeout = timeout,
+            timeout = self.timeout,
             params = params
         )
         
@@ -123,8 +124,7 @@ class Web(requests.Session):
         referer: str = None,
         origin: str = None,
         params: dict = None,
-        return_dict = False,
-        timeout = 30
+        return_dict = False
     ) -> Path | dict:
         if destination.exists():
             return
@@ -146,7 +146,7 @@ class Web(requests.Session):
             url = url_str,
             headers = headers,
             params = params,
-            timeout = timeout
+            timeout = self.timeout
         ) as response:
             # Server ignored Range request, restart download
             if downloaded and response.status_code == 200:

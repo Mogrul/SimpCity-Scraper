@@ -4,6 +4,7 @@ from datetime import datetime
 from collections import defaultdict
 from uuid import UUID
 from pathlib import Path
+from argparse import Namespace
 
 from bs4 import BeautifulSoup, Tag
 
@@ -17,12 +18,23 @@ from .duplication import Duplication
 class SimpCity:
     def __init__(
             self,
-            urls: list[str]
+            args: Namespace
     ):
         self.logger = logging.getLogger("simpcity")
         self.notified_unsupported: set[str] = set()
-        self.urls: list[ParseResult] = self.clean_urls(urls)
-        self.web = Web()
+
+        # Args
+        self.workers = args.workers
+        self.remove_duplicates = bool(args.remove_duplicates)
+        self.urls: list[ParseResult] = self.clean_urls(args.urls)
+        self.output = args.output
+        self.chunk_size = args.chunk_size
+        self.timeout = args.timeout
+        
+        self.web = Web(
+            chunk_size = args.chunk_size,
+            timeout = args.timeout
+        )
         self.duplication = Duplication()
         
         self.post_map: dict[UUID, Post] = {}
@@ -51,6 +63,10 @@ class SimpCity:
                 self.notified_unsupported.add(parsed.netloc)
                 continue
             
+            if url.endswith("/"):
+                url = url[:-1]
+                parsed = urlparse(url)
+                
             scrapable_urls.append(parsed)
 
         return scrapable_urls
@@ -88,7 +104,8 @@ class SimpCity:
             self.domain_map.clear()
             
             # Check for duplicates
-            self.duplication.check_duplicate_images(Path("Downloads", username))
+            if self.remove_duplicates:
+                self.duplication.check_duplicate_images(Path(self.output, username))
 
     def scrape_domains(self, username: str):
         for domain in self.domain_map.keys():
@@ -104,7 +121,11 @@ class SimpCity:
             site = site(
                 username = username,
                 post_map = self.post_map,
-                posts = self.domain_map[domain]
+                posts = self.domain_map[domain],
+                base_path = self.output,
+                max_workers = self.workers,
+                chunk_size = self.chunk_size,
+                timeout = self.timeout
             )
             site.scrape()
 

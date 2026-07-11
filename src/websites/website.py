@@ -8,23 +8,28 @@ from uuid import uuid5, NAMESPACE_URL
 from src.models import Post
 from src.web import Web
 
-BASE_PATH = Path("Downloads")
-
 class WebSite:
     def __init__(
             self,
             username: str,
             post_map: dict[UUID, Post],
             posts: dict[UUID, Post],
+            base_path: Path,
+            chunk_size: int,
+            timeout: int,
             logger = logging.Logger,
-            max_workers = 10
+            max_workers = 10,
     ):
         self.username = username
         self.post_map = post_map
         self.posts = posts
-        self.web = Web()
+        self.web = Web(
+            chunk_size = chunk_size,
+            timeout = timeout
+        )
         self.max_workers = max_workers
         self.logger = logger
+        self.base_path = base_path
         
         self.link_map = self.create_link_map()
     
@@ -48,7 +53,7 @@ class WebSite:
         file_id = str(uuid5(NAMESPACE_URL, parsed.geturl())).replace("-", "")[:-16]
         
         file_path = Path(
-            BASE_PATH,
+            self.base_path,
             self.username,
             str(created_at.year),
             f"{created_at.strftime('%B')}",

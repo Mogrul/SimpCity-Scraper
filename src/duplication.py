@@ -48,7 +48,7 @@ class Duplication:
                 if p.is_file() and is_image(p)
             ]
         
-        with ThreadPoolExecutor(max_workers = 10, thread_name_prefix = "hashing") as executor:
+        with ThreadPoolExecutor(max_workers = 20, thread_name_prefix = "hashing") as executor:
             executor.map(self.hash_image, images)
         
         images = list(self.hashes.items())
