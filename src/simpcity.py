@@ -8,7 +8,6 @@ from argparse import Namespace
 
 from bs4 import BeautifulSoup, Tag
 
-from .support import SUPPORTED_SITES
 from .websites import WEBSITES
 from .web import Web
 from .models import Post, Thread
@@ -44,23 +43,22 @@ class SimpCity:
         scrapable_urls = []
         
         for url in urls:
-            parsed = urlparse(url)
+            scheme = urlparse(url).scheme
+            domain_name = get_domain_name(url)
 
             if (
-                    not parsed.scheme in ("http", "https")
-                    and not parsed.netloc
+                    not scheme in ("http", "https")
+                    and not domain_name
             ):
                 self.logger.warning(f"Skipping invalid site: {url}")
                 continue
             
-            url = parsed.geturl()
-            
             if (
-                    parsed.netloc not in SUPPORTED_SITES
-                    and parsed.netloc not in self.notified_unsupported
+                    domain_name not in WEBSITES
+                    and domain_name not in self.notified_unsupported
             ):    
-                self.logger.warning(f"Unsupported site: {parsed.netloc}")
-                self.notified_unsupported.add(parsed.netloc)
+                self.logger.warning(f"Unsupported site: {domain_name}")
+                self.notified_unsupported.add(domain_name)
                 continue
             
             if url.endswith("/"):
@@ -111,7 +109,7 @@ class SimpCity:
 
     def scrape_domains(self, username: str):
         for domain in self.domain_map.keys():
-            if domain not in SUPPORTED_SITES:
+            if domain not in WEBSITES:
                 continue
             
             site = WEBSITES.get(domain)
@@ -217,7 +215,7 @@ class SimpCity:
                 continue
             
             domain_name = get_domain_name(href)
-            if domain_name not in SUPPORTED_SITES:
+            if domain_name not in WEBSITES:
                 continue
                         
             match domain_name:
@@ -247,7 +245,7 @@ class SimpCity:
             
             domain_name = get_domain_name(src)
             
-            if domain_name not in SUPPORTED_SITES:
+            if domain_name not in WEBSITES:
                 continue
             
             external_links[domain_name].append(src)

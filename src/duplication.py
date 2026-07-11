@@ -2,7 +2,6 @@ import threading
 from pathlib import Path
 import logging
 from concurrent.futures import ThreadPoolExecutor
-import shutil
 
 from PIL import Image
 import imagehash

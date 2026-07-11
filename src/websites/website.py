@@ -31,18 +31,18 @@ class WebSite:
         self.logger = logging.getLogger(__name__) if not logger else logger
         self.base_path = base_path
         
-        self.link_map = self.create_link_map()
+        self.url_map = self.create_url_map()
     
-    def create_link_map(self) -> dict[str, datetime]:
-        link_map: dict[str, datetime] = {}
+    def create_url_map(self) -> dict[str, datetime]:
+        url_map: dict[str, datetime] = {}
         
         for post_id, urls in self.posts.items():
             post = self.post_map[post_id]
             
             for url in urls:
-                link_map[url] = post.created_at
+                url_map[url] = post.created_at
         
-        return link_map
+        return url_map
     
     def scrape(self):
         pass
@@ -69,3 +69,6 @@ class WebSite:
         )
         
         return file_path
+
+    def handle_url(self, url: str, created_at: datetime) -> list[dict] | None:
+        pass
