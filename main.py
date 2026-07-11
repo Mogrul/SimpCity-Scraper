@@ -1,8 +1,10 @@
-from src.core import Core
-from src.logger import load_logger
+from src.shared.logger import load_logger
+from src.simpcity import SimpCity
+from src.args import parse_args
 
 if __name__ == "__main__":
+    args = parse_args()
     load_logger()
-    
-    core = Core()
-    core.scrape("https://simpcity.cr/threads/aiwa-aiwa_only-truegspot-yoursexylady18-aiwaonly.15084/")
+
+    simpcity = SimpCity(args)
+    simpcity.scrape()
