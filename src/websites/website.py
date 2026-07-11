@@ -48,8 +48,16 @@ class WebSite:
         pass
     
     def get_file_path(self, url: str, created_at: datetime):
+        def get_file_name() -> Path:
+            file_name = parsed.path.replace("/", "")
+            
+            if "?" in file_name:
+                file_name = file_name.split("?")[0]
+            
+            return Path(file_name)
+        
         parsed = urlparse(url)
-        file_name = Path(parsed.path.replace("/", ""))
+        file_name = get_file_name()
         file_id = str(uuid5(NAMESPACE_URL, parsed.geturl())).replace("-", "")[:-16]
         
         file_path = Path(

@@ -190,6 +190,7 @@ class SimpCity:
         
         content = cell.find("div", class_ = "message-content")
         link_elements = content.find_all("a", class_ = "link--external")
+        iframes = content.find_all("iframe", class_ = "saint-iframe")
         
         for link_element in link_elements:
             href = link_element.get("href")
@@ -215,6 +216,15 @@ class SimpCity:
                     continue
 
             external_links[parsed.netloc].append(href)
+        
+        for iframe in iframes:
+            src = iframe.get("src")
+            parsed = urlparse(src)
+            
+            if parsed.netloc not in SUPPORTED_SITES:
+                continue
+            
+            external_links[parsed.netloc].append(src)
         
         return to_dict(external_links)
     
