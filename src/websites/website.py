@@ -13,11 +13,11 @@ class WebSite:
             self,
             username: str,
             post_map: dict[UUID, Post],
-            posts: dict[UUID, Post],
+            posts: dict[UUID, list[str]],
             base_path: Path,
             chunk_size: int,
             timeout: int,
-            logger = logging.Logger,
+            logger: logging.Logger | None = None,
             max_workers = 10,
     ):
         self.username = username
@@ -28,7 +28,7 @@ class WebSite:
             timeout = timeout
         )
         self.max_workers = max_workers
-        self.logger = logger
+        self.logger = logging.getLogger(__name__) if not logger else logger
         self.base_path = base_path
         
         self.link_map = self.create_link_map()
@@ -48,8 +48,16 @@ class WebSite:
         pass
     
     def get_file_path(self, url: str, created_at: datetime):
+        def get_file_name() -> Path:
+            file_name = parsed.path.replace("/", "")
+            
+            if "?" in file_name:
+                file_name = file_name.split("?")[0]
+            
+            return Path(file_name)
+        
         parsed = urlparse(url)
-        file_name = Path(parsed.path.replace("/", ""))
+        file_name = get_file_name()
         file_id = str(uuid5(NAMESPACE_URL, parsed.geturl())).replace("-", "")[:-16]
         
         file_path = Path(
