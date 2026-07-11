@@ -1,6 +1,3 @@
-from urllib.parse import urlparse
-import json
-
 from src.shared.logger import load_logger
 from src.simpcity import SimpCity
 from src.args import parse_args

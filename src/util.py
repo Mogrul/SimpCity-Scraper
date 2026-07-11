@@ -2,8 +2,6 @@ from urllib.parse import urlparse
 from collections import defaultdict
 from pathlib import Path
 
-import tldextract
-
 def is_valid_url(url: str) -> bool:
     try:
         parsed = urlparse(url)
@@ -25,10 +23,9 @@ def format_bytes(size: int) -> str:
     for unit in ["B", "KB", "MB", "GB", "TB"]:
         if size < 1024:
             return f"{size:.2f} {unit}"
-        
-        new_size = size / 1024
+        size /= 1024
 
-    return f"{new_size:.2f} PB"
+    return f"{size:.2f} PB"
 
 def is_image(path: Path) -> bool:
     if not path.is_file():
@@ -40,6 +37,3 @@ def is_image(path: Path) -> bool:
         return True
     
     return False
-
-def get_domain_name(url: str) -> str:
-    return tldextract.extract(url).domain

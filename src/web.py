@@ -1,12 +1,12 @@
 import logging
 from http.cookiejar import MozillaCookieJar
 from pathlib import Path
+from urllib.parse import ParseResult
 import json
 
+import tldextract
 import requests
 from bs4 import BeautifulSoup
-
-from .util import get_domain_name
 
 class Web(requests.Session):
     _instance = None
@@ -48,7 +48,7 @@ class Web(requests.Session):
             return
         
         jar = MozillaCookieJar()
-        jar.load(str(file_path), ignore_discard = True, ignore_expires = True)
+        jar.load(file_path, ignore_discard = True, ignore_expires = True)
         
         self.logger.info(f"Loaded cookies for {domain_name}")
         self.cookies.update(jar)
@@ -64,11 +64,11 @@ class Web(requests.Session):
     
     def build_headers(
             self,
-            url: str,
-            referer: str | None = None,
-            origin: str | None = None
+            url: ParseResult,
+            referer: ParseResult = None,
+            origin: ParseResult = None
     ) -> dict:
-        domain_name = get_domain_name(url)
+        domain_name = tldextract.extract(url.geturl()).domain
         
         if domain_name not in self.parsed_cookies:
             self.load_cookie(domain_name = domain_name)
@@ -76,59 +76,61 @@ class Web(requests.Session):
         headers = {}
         
         if referer:
-            headers["Referer"] = referer
+            headers["Referer"] = referer.geturl()
         
         if origin:
-            headers["Origin"] = origin
+            headers["Origin"] = origin.geturl()
         
         return headers
 
     def get(
             self,
-            url: str,
-            referer: str | None = None,
-            origin: str | None = None,
-            params: dict | None = None,
+            url: ParseResult,
+            referer: str = None,
+            origin: str = None,
+            params: dict = None,
             return_dict = False
     ) -> BeautifulSoup | dict | None:
         headers = self.build_headers(url, referer, origin)
+        url_str = url.geturl()
         
         reply = super().get(
-            url,
+            url_str,
             headers = headers,
             timeout = self.timeout,
             params = params
         )
         
         if reply.status_code != 200:
-            self.logger.error(f"Failed with status {reply.status_code} for {url}")
+            self.logger.error(f"Failed with status {reply.status_code} for {url_str}")
             return None
         
-        self.logger.info(f"Sent GET request: {url}")
+        self.logger.info(f"Sent GET request: {url_str}")
         
         if return_dict:
             try:
                 return reply.json()
             
             except json.JSONDecodeError:
-                self.logger.error(f"Failed to decode reply to json from {url}")
+                self.logger.error(f"Failed to decode reply to json from {url_str}")
                 return None
         
         return BeautifulSoup(reply.content, "html.parser")
 
     def download(
         self,
-        url: str,
+        url: ParseResult,
         destination: Path,
-        referer: str | None = None,
-        origin: str | None = None,
-        params: dict | None = None,
+        referer: str = None,
+        origin: str = None,
+        params: dict = None,
         return_dict = False
-    ) -> Path | dict | None:
+    ) -> Path | dict:
         if destination.exists():
             return
         
         headers = self.build_headers(url, referer, origin)
+        url_str = url.geturl()
         
         destination.parent.mkdir(parents = True, exist_ok = True)
         temp_path = destination.with_suffix(destination.suffix + ".temp")
@@ -141,7 +143,7 @@ class Web(requests.Session):
             headers["Range"] = f"bytes={downloaded}"
         
         with super().get(
-            url = url,
+            url = url_str,
             headers = headers,
             params = params,
             timeout = self.timeout
@@ -165,7 +167,7 @@ class Web(requests.Session):
         
         if return_dict:
             return {
-                "url": url,
+                "url": url_str,
                 "destination": destination,
                 "size": destination.stat().st_size
             }

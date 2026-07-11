@@ -5,7 +5,7 @@ import json
 from urllib.parse import urlparse
 
 from .website import WebSite
-from src.util import format_bytes, get_domain_name
+from src.util import format_bytes
 
 class GoonBox(WebSite):
     def __init__(self, *args, **kwargs):
@@ -47,7 +47,7 @@ class GoonBox(WebSite):
         
         return self.handle_image(url, created_at)
         
-    def handle_album(self, url: str, created_at: datetime) -> list[dict] | None:
+    def handle_album(self, url: str, created_at: datetime) -> list[dict]:
         def get_album_id() -> str:
             id =  url.split("/a/")[1].split("/")[0]
             if "." in id:
@@ -55,7 +55,7 @@ class GoonBox(WebSite):
             else:
                 return id
         
-        def download_page(image: dict) -> list[dict] | None:
+        def download_page(image: dict) -> dict | None:
             img_url = image.get("original_url")
             if not img_url: return
             
@@ -67,44 +67,19 @@ class GoonBox(WebSite):
         
         parsed = urlparse(url)
         album_id = get_album_id()
-        api_url = "https://" + parsed.netloc + f"/api/albums/{album_id}"
+        api_url = urlparse("https://" + parsed.netloc + f"/api/albums/{album_id}")
         
-        first_page = self.web.get(
-            api_url,
-            referer = url,
-            return_dict = True
-        )
+        data = self.web.get(api_url, referer = parsed, return_dict = True)
         
-        if not isinstance(first_page, dict):
-            return
+        last_page = data["pagination"]["last_page"]
         
-        pagination = first_page.get("pagination", {})
-        
-        if not isinstance(pagination, dict):
-            return
-        
-        last_page = pagination.get("last_page")
-        if not isinstance(last_page, int):
-            last_page = 1
-                
         for page_num in range(1, last_page + 1):
-            page_data = first_page
-            
             if page_num != 1:
-                paged_url  = api_url + f"/images?page={page_num}"
-                page_data  = self.web.get(
-                    paged_url,
-                    referer = url,
-                    return_dict = True
-                )
-                
-                if not isinstance(page_data , dict):
-                    continue
+                paged_url = urlparse(api_url.geturl() + f"/images?page={page_num}")
+                data = self.web.get(paged_url, referer = parsed, return_dict = True)
             
-            images = data.get("images")
-            if not isinstance(images, list):
-                continue
-                        
+            images: list[dict] = data["images"]
+            
             with ThreadPoolExecutor(
                     self.max_workers,
                     thread_name_prefix = "website.goonbox.thread"
@@ -130,9 +105,9 @@ class GoonBox(WebSite):
     
     def handle_image(self, url: str, created_at: datetime) -> list[dict]:
         file_path = self.get_file_path(url, created_at)
-        downloaded = self.web.download(url, destination = file_path, return_dict = True)
+        downloaded = self.web.download(urlparse(url), destination = file_path, return_dict = True)
         
-        if not isinstance(downloaded, dict):
+        if not downloaded:
             return []
         
         return [downloaded]
