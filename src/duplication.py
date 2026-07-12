@@ -147,6 +147,9 @@ class Duplication:
         
         if deleted == 0:
             self.logger.info(f"Found no duplicate images")
+        
+        else:
+            self.logger.info(f"Deleted {deleted} images")
  
     def check_duplicate_videos(
             self,
@@ -258,7 +261,9 @@ class Duplication:
             
         if deleted == 0:
             self.logger.info(f"Found no duplicate videos")
-                    
+        
+        else:
+            self.logger.info(f"Deleted {deleted} videos")
  
     def clear(self):
         self.image_hashes = {}
