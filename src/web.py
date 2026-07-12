@@ -91,6 +91,32 @@ class Web(requests.Session):
         
         return headers
 
+    def post(
+            self,
+            url: str,
+            payload: dict,
+            referer: str | None = None,
+            origin: str | None = None,
+    ) -> dict | None:
+        headers = self.build_headers(url, referer, origin)
+        headers["Content-Type"] = "application/json"
+        
+        reply = super().post(
+            url,
+            json = payload,
+            headers = headers,
+            timeout = config.TIMEOUT
+        )
+        
+        self.logger.info(f"Sent POST request: {url}")
+        
+        try:
+            return reply.json()
+
+        except json.JSONDecodeError:
+            self.logger.error(f"Failed to decode reply to json from {url}")
+            return None
+
     def get(
             self,
             url: str,

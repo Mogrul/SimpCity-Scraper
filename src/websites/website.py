@@ -14,10 +14,8 @@ class WebSite:
             self,
             urls: list[ExternalURL],
             logger: logging.Logger | None = None,
-            max_workers = 10,
             thread_name = "WebSite"
     ):
-        self.max_workers = max_workers
         self.urls = urls
         self.thread_name = thread_name
         self.logger = (
@@ -29,7 +27,7 @@ class WebSite:
             
     def scrape(self): 
         with ThreadPoolExecutor(
-                max_workers = self.max_workers,
+                max_workers = config.WORKERS,
                 thread_name_prefix = self.thread_name
         ) as executor:
             future_to_url = {
@@ -48,12 +46,9 @@ class WebSite:
                 if not results: continue
                 
                 for result in results:
-                    if not isinstance(result, DownloadResult):
-                        continue
-                    
                     self.logger.info(f"Downloaded {result.url.url} -> {result.path}")
             
-    def on_url_scrape(self, url: ExternalURL) -> list[dict] | None:
+    def on_url_scrape(self, url: ExternalURL) -> list[DownloadResult] | None:
         pass
     
     def get_file_path(self, url: ExternalURL):
