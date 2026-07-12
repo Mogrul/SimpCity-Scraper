@@ -7,7 +7,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from src.models import ExternalURL, DownloadResult
 from src.web import Web
-from src import config
+from src.shared.config import Config
 
 class WebSite:
     def __init__(
@@ -22,12 +22,13 @@ class WebSite:
             logging.getLogger(__name__)
             if not logger else logger
         )
+        self.config = Config()
 
         self.web = Web()
             
     def scrape(self): 
         with ThreadPoolExecutor(
-                max_workers = config.WORKERS,
+                max_workers = self.config.workers,
                 thread_name_prefix = self.thread_name
         ) as executor:
             future_to_url = {
@@ -69,7 +70,7 @@ class WebSite:
         tag_path = (url.tags[0],) if url.tags else ()
 
         file_path = Path(
-            config.OUTPUT,
+            self.config.output,
             *tag_path,
             url.username,
             str(url.created_at.year),

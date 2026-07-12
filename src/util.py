@@ -37,5 +37,20 @@ def is_image(path: Path) -> bool:
     
     return False
 
+def is_video(path: Path) -> bool:
+    if not path.is_file():
+        return False
+    
+    video_extensions = {
+        ".mp4", ".mkv", ".avi", ".mov",
+        ".webm", ".wmv", ".flv",
+        ".m4v", ".mpeg", ".mpg"
+    }
+    
+    if path.suffix.lower() in video_extensions:
+        return True
+    
+    return False
+
 def get_domain_name(url: str) -> str:
     return tldextract.extract(url).domain
