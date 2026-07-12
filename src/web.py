@@ -2,6 +2,7 @@ import logging
 from http.cookiejar import MozillaCookieJar
 from pathlib import Path
 import json
+from urllib.parse import urlparse
 
 import requests
 from requests.adapters import HTTPAdapter
@@ -9,6 +10,8 @@ from bs4 import BeautifulSoup
 
 from .util import get_domain_name
 from .models import DownloadResult, ExternalURL
+
+from src.shared.config import Config
 
 class Web(requests.Session):
     _instance = None
@@ -19,19 +22,14 @@ class Web(requests.Session):
         
         return cls._instance
     
-    def __init__(
-            self,
-            chunk_size: int,
-            timeout: int
-    ):
+    def __init__(self):
         if getattr(self, "_initialised", False):
             return
         
         super().__init__()
         self.logger = logging.getLogger("web")
         self.parsed_cookies: set[str] = set()
-        self.chunk_size = chunk_size
-        self.timeout = timeout
+        self.config = Config()
         
         self.load_headers()
         self.load_adapter()
@@ -70,7 +68,7 @@ class Web(requests.Session):
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
                         "AppleWebKit/537.36 (KHTML, like Gecko) "
                         "Chrome/138.0.0.0 Safari/537.36",
-            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7",
             "Accept-Language": "en-GB,en;q=0.9",
         })
     
@@ -78,12 +76,14 @@ class Web(requests.Session):
             self,
             url: str,
             referer: str | None = None,
-            origin: str | None = None
+            origin: str | None = None,
+            load_cookies = True
     ) -> dict:
         domain_name = get_domain_name(url)
         
-        if domain_name not in self.parsed_cookies:
-            self.load_cookie(domain_name = domain_name)
+        if load_cookies:
+            if domain_name not in self.parsed_cookies:
+                self.load_cookie(domain_name = domain_name)
         
         headers = {}
         
@@ -95,20 +95,48 @@ class Web(requests.Session):
         
         return headers
 
+    def post(
+            self,
+            url: str,
+            payload: dict,
+            referer: str | None = None,
+            origin: str | None = None,
+    ) -> dict | None:
+        headers = self.build_headers(url, referer, origin)
+        headers["Content-Type"] = "application/json"
+        
+        reply = super().post(
+            url,
+            json = payload,
+            headers = headers,
+            timeout = self.config.timeout
+        )
+        
+        self.logger.debug(f"Sent POST request: {url}")
+        
+        try:
+            return reply.json()
+
+        except json.JSONDecodeError:
+            self.logger.error(f"Failed to decode reply to json from {url}")
+            return None
+
     def get(
             self,
             url: str,
             referer: str | None = None,
             origin: str | None = None,
             params: dict | None = None,
-            return_dict = False
-    ) -> BeautifulSoup | dict | None:
+            return_dict = False,
+            return_headers = False,
+            log = True
+    ) -> BeautifulSoup | dict | dict | None:
         headers = self.build_headers(url, referer, origin)
         
         reply = super().get(
             url,
             headers = headers,
-            timeout = self.timeout,
+            timeout = self.config.timeout,
             params = params
         )
         
@@ -116,7 +144,11 @@ class Web(requests.Session):
             self.logger.error(f"Failed with status {reply.status_code} for {url}")
             return None
         
-        self.logger.info(f"Sent GET request: {url}")
+        if log:
+            self.logger.debug(f"Sent GET request: {url}")
+        
+        if return_headers:
+            return dict(reply.headers)
         
         if return_dict:
             try:
@@ -127,6 +159,51 @@ class Web(requests.Session):
                 return None
         
         return BeautifulSoup(reply.content, "html.parser")
+
+    def get_cookies(
+            self,
+            url: str,
+            referer: str
+    ) -> dict | None:
+        domain_name = get_domain_name(url)
+        parsed = urlparse(url)
+        
+        if (
+                not parsed
+                or not parsed.hostname
+        ):
+            self.logger.error(f"Failed to parse URL {url}")
+            return None
+        
+        if domain_name in self.parsed_cookies:
+            return self.cookies.get_dict(
+                domain = "." + parsed.hostname
+            )
+        
+        headers = self.build_headers(url, referer, load_cookies = False)
+        
+        reply = super().get(
+            url,
+            headers = headers,
+            timeout = self.config.timeout
+        )
+        
+        self.logger.debug(f"Sent API request to: {url}")
+        
+        if reply.status_code != 200:
+            self.logger.error(f"Failed with status: {reply.status_code} for {url}")
+            return None
+        
+        # Attempt to get cookies back
+        grabbed_cookies = self.cookies.get_dict(domain = "." + parsed.hostname)
+        
+        if not grabbed_cookies:
+            self.logger.error(f"Failed to get cookies after successful request")
+            return None
+        
+        self.parsed_cookies.add(domain_name)
+        
+        return grabbed_cookies
 
     def download(
         self,
@@ -152,10 +229,10 @@ class Web(requests.Session):
             headers["Range"] = f"bytes={downloaded}"
         
         with super().get(
-            url = url.url,
+            url = url.signed if url.signed else url.url,
             headers = headers,
             params = params,
-            timeout = self.timeout
+            timeout = self.config.timeout
         ) as response:
             # Server ignored Range request, restart download
             if downloaded and response.status_code == 200:
@@ -168,7 +245,7 @@ class Web(requests.Session):
             mode = "ab" if downloaded else "wb"
             
             with open(temp_path, mode) as file:
-                for chunk in response.iter_content(self.chunk_size):
+                for chunk in response.iter_content(self.config.chunk_size):
                     if chunk:
                         file.write(chunk)
             

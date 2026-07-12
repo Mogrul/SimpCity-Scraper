@@ -1,12 +1,12 @@
-from urllib.parse import urlparse, ParseResult
+from urllib.parse import urlparse
 import logging
 from datetime import datetime
 from collections import defaultdict
-from uuid import UUID
 from pathlib import Path
-from argparse import Namespace
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from bs4 import BeautifulSoup, Tag
+from tqdm import tqdm
 
 from .websites import WEBSITES
 from .web import Web
@@ -14,39 +14,22 @@ from .models import ExternalURL
 from .util import is_valid_url, get_domain_name
 from .duplication import Duplication
 
-class SimpCity:
-    def __init__(
-            self,
-            args: Namespace
-    ):
-        """SimpCity scraping class to scrape multiple threads
+from src.shared.config import Config
 
-        Args:
-            args (Namespace): Arguments parsed to main.py
-        """
+class SimpCity:
+    def __init__(self):
         self.logger = logging.getLogger("simpcity")
         self.notified_unsupported: set[str] = set()
 
-        # Args
-        self.workers = args.workers
-        self.remove_duplicates = bool(args.remove_duplicates)
-        self.urls: list[str] = self._clean_urls(args.urls)
-        self.output = args.output
-        self.chunk_size = args.chunk_size
-        self.timeout = args.timeout
+        self.config = Config()
+        self.config.urls = self._clean_urls()
         
-        self.web = Web(
-            chunk_size = args.chunk_size,
-            timeout = args.timeout
-        )
+        self.web = Web()
         self.duplication = Duplication()
-    
+            
     # Init funcs 
-    def _clean_urls(self, urls: list[str]) -> list[str]:
+    def _clean_urls(self) -> list[str]:
         """Removes garbage and unsupported URLs
-
-        Args:
-            urls (list[str]): A list of URLs passed from args
 
         Returns:
             list[str]: A list of sanitised URLs
@@ -54,7 +37,7 @@ class SimpCity:
         
         scrapable_urls = []
         
-        for url in urls:
+        for url in self.config.urls:
             scheme = urlparse(url).scheme
             domain_name = get_domain_name(url)
 
@@ -84,7 +67,32 @@ class SimpCity:
     def scrape(self):
         """Scraping function to initate scraping of SimpCity threads
         """
-        for url in self.urls:
+        def get_page(
+                url: str,
+                page_num: int,
+                username: str,
+                thread_tags: list[str]
+        ) -> list[ExternalURL] | None:
+            page_url = self._get_page_url(url, page_num)
+            
+            soup = self.web.get(
+                page_url,
+                referer = url,
+                log = False
+            )
+            
+            if not isinstance(soup, BeautifulSoup):
+                return
+            
+            page_urls = self._get_urls_in_page(
+                soup,
+                username,
+                thread_tags
+            )
+            
+            return page_urls
+        
+        for url in self.config.urls:
             username = self._get_username(url).capitalize()
             soup = self.web.get(url)
             
@@ -94,29 +102,81 @@ class SimpCity:
             max_page_count = self._get_max_page_count(soup)
             thread_tags = self._get_thread_tags(soup)
             
+            thread_path = Path(
+                self.config.output,
+                thread_tags[0],
+                username
+            )
+            
             urls: list[ExternalURL] = []
-            for page_num in range(1, max_page_count + 1):
-                page_url = self._get_page_url(url, page_num)
+            
+            self.logger.info(f"Retrieving pages in {url}")
+            with ThreadPoolExecutor(
+                    max_workers = self.config.workers,
+                    thread_name_prefix = "simpcity.page.thread"
+            ) as executor:
+                futures = [
+                    executor.submit(get_page, url, page_num, username, thread_tags)
+                    for page_num in range(1, max_page_count + 1)
+                ]
                 
-                if page_num != 1:
-                    soup = self.web.get(page_url, referer = url)
-
-                if not isinstance(soup, BeautifulSoup):
-                    continue
-                
-                page_urls = self._get_urls_in_page(
-                    soup,
-                    username,
-                    thread_tags
-                )
-                urls.extend(page_urls)
+                with tqdm(
+                        total = len(futures),
+                        desc = "Getting thread pages"
+                ) as progress:
+                    for future in as_completed(futures):
+                        try:
+                            result = future.result()
+                        
+                        except Exception as e:
+                            self.logger.error(f"Error grabbing page: {e}")
+                            progress.update(1)
+                            continue
+                        
+                        if not result:
+                            progress.update(1)
+                            continue
+                        
+                        urls.extend(result)
+                        progress.update(1)
             
             domain_index = self._sort_urls_by_domain(urls)
             self._scrape_domains(domain_index)
             
+            # Removes empty directories
+            self.remove_empty_dirs()
+            
             # Check for duplicates
-            if self.remove_duplicates:
-                self.duplication.check_duplicate_images(Path(self.output, username))
+            if self.config.remove_image_duplicates:
+                self.duplication.check_duplicate_images(
+                    thread_path
+                )
+            
+            if self.config.remove_video_duplicates:
+                self.duplication.check_duplicate_videos(
+                    thread_path
+                )
+
+    def remove_empty_dirs(self):
+        deleted = 0
+        
+        for directory in sorted(
+                self.config.output.rglob("*"),
+                key = lambda p: len(p.parts),
+                reverse = True
+        ):
+            if directory.is_dir():
+                try:
+                    directory.rmdir() # only removes if empty
+                    deleted += 1
+                    
+                except OSError:
+                    pass # Contains files
+
+        if deleted == 0:
+            return
+
+        self.logger.info(f"Deleted {deleted} empty directories in {self.config.output}")
 
     # Called after urls found
     def _scrape_domains(
@@ -140,15 +200,10 @@ class SimpCity:
             
             urls = domain_index[domain]
             
-            site = site(
-                urls = urls,
-                base_path = self.output,
-                chunk_size = self.chunk_size,
-                timeout = self.timeout,
-                max_workers = self.workers,
-                logger = None
-            )
+            site = site(urls)
             site.scrape()
+            
+            self.remove_empty_dirs()
 
     # Domain scraping helper func
     def _sort_urls_by_domain(
@@ -334,7 +389,15 @@ class SimpCity:
                 continue
             
             if not is_valid_url(href):
-                continue
+                # Handle redirects
+                if "/redirect/" in href:
+                    href = url_element.get_text()
+                    
+                    if not href:
+                        continue
+                    
+                else:
+                    continue
             
             domain_name = get_domain_name(href)
             if domain_name not in WEBSITES:
@@ -343,6 +406,9 @@ class SimpCity:
             match domain_name:
                 case "goonbox":
                     img_element = url_element.find("img")
+                    
+                    if "goonbox" in self.config.excluded_domains:
+                        continue
                     
                     if not img_element:
                         external_urls.append(ExternalURL(
@@ -372,6 +438,9 @@ class SimpCity:
                     
                     continue
             
+            if domain_name in self.config.excluded_domains:
+                continue
+            
             external_urls.append(ExternalURL(
                 created_at = created_at,
                 url = href,
@@ -388,6 +457,9 @@ class SimpCity:
             domain_name = get_domain_name(src)
             
             if domain_name not in WEBSITES:
+                continue
+            
+            if domain_name in self.config.excluded_domains:
                 continue
             
             external_urls.append(ExternalURL(

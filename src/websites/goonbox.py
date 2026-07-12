@@ -1,20 +1,14 @@
-from concurrent.futures import ThreadPoolExecutor, as_completed
 import logging
-from datetime import datetime
 from urllib.parse import urlparse
 
 from src.models import ExternalURL, DownloadResult
 from .website import WebSite
-from src.util import format_bytes, get_domain_name
+from src.util import get_domain_name
 
 class GoonBox(WebSite):
     def __init__(self, *args, **kwargs):
-        logger = kwargs.pop("logger")
-        if not logger:
-            logger = logging.getLogger("website.turbo")
-        
         super().__init__(
-            logger = logger,
+            logger = logging.getLogger("website.goonbox"),
             thread_name = "website.goonbox.thread",
             *args,
             **kwargs
