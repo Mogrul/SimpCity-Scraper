@@ -75,6 +75,12 @@ class SimpCity:
             max_page_count = self._get_max_page_count(soup)
             thread_tags = self._get_thread_tags(soup)
             
+            thread_path = Path(
+                self.config.output,
+                thread_tags[0],
+                username
+            )
+            
             urls: list[ExternalURL] = []
             for page_num in range(1, max_page_count + 1):
                 page_url = self._get_page_url(url, page_num)
@@ -95,11 +101,40 @@ class SimpCity:
             domain_index = self._sort_urls_by_domain(urls)
             self._scrape_domains(domain_index)
             
+            # Removes empty directories
+            self.remove_empty_dirs()
+            
             # Check for duplicates
-            if self.config.remove_duplicates:
+            if self.config.remove_image_duplicates:
                 self.duplication.check_duplicate_images(
-                    Path(self.config.output, username)
+                    thread_path
                 )
+            
+            if self.config.remove_video_duplicates:
+                self.duplication.check_duplicate_videos(
+                    thread_path
+                )
+
+    def remove_empty_dirs(self):
+        deleted = 0
+        
+        for directory in sorted(
+                self.config.output.rglob("*"),
+                key = lambda p: len(p.parts),
+                reverse = True
+        ):
+            if directory.is_dir():
+                try:
+                    directory.rmdir() # only removes if empty
+                    deleted += 1
+                    
+                except OSError:
+                    pass # Contains files
+
+        if deleted == 0:
+            return
+
+        self.logger.info(f"Deleted {deleted} empty directories in {self.config.output}")
 
     # Called after urls found
     def _scrape_domains(
@@ -125,6 +160,8 @@ class SimpCity:
             
             site = site(urls)
             site.scrape()
+            
+            self.remove_empty_dirs()
 
     # Domain scraping helper func
     def _sort_urls_by_domain(

@@ -25,7 +25,9 @@ class Config:
         
         # Download settings
         self.output = Path("Downloads")
-        self.remove_duplicates = True
+        self.remove_image_duplicates = True
+        self.remove_video_duplicates = True
+        self.similarity_threshold = 0.9
         self.chunk_size = 1_048_576
         
         # Network settings
@@ -54,7 +56,9 @@ class Config:
         downloads = data.get("downloads", {})
         
         output = downloads.get("output", Path("Downloads"))
-        remove_duplicates = downloads.get("remove_duplicates", True)
+        remove_image_duplicates = downloads.get("remove_image_duplicates", True)
+        remove_video_duplicates = downloads.get("remove_video_duplicates", True)
+        similarity_threshold = downloads.get("similarity_threshold", 0.9)
         chunk_size = downloads.get("chunk_size", 1_048_576)
         
         network = data.get("network", {})
@@ -70,13 +74,12 @@ class Config:
         if isinstance(output, str):
             output = Path(output)
         
-        if isinstance(remove_duplicates, str):
-            remove_duplicates = bool(remove_duplicates)
-        
         self.urls = urls
         
         self.output = output
-        self.remove_duplicates = remove_duplicates
+        self.remove_image_duplicates = remove_image_duplicates
+        self.remove_video_duplicates = remove_video_duplicates
+        self.similarity_threshold = similarity_threshold
         
         self.timeout = timeout
         self.user_agent = user_agent
@@ -128,11 +131,21 @@ class Config:
         
         # bool verify
         bool_verify = self._verify_by_class(bool, [
-            self.remove_duplicates
+            self.remove_video_duplicates,
+            self.remove_image_duplicates
         ])
         
         if not bool_verify:
             self._logger.critical(f"One or more bools are invalid!")
+            return False
+        
+        # float verify
+        float_verify = self._verify_by_class(float, [
+            self.similarity_threshold
+        ])
+        
+        if not float_verify:
+            self._logger.critical(f"One or more floats are invalid!")
             return False
         
         return True
