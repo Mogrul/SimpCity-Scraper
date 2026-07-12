@@ -1,8 +1,10 @@
 from argparse import Namespace
 from pathlib import Path
+import logging
 
 import yaml
-import logging
+
+from src.util import resource_path, format_bytes
 
 class Config:
     _instance = None
@@ -41,11 +43,11 @@ class Config:
     def load_config(
             self,
             args: Namespace,
-            config_path = Path("config.yaml")
+            config_path = "config.yaml"
     ) -> bool:
         urls = args.urls
         
-        with open(config_path, "r") as f:
+        with open(resource_path(config_path), "r") as f:
             data = yaml.safe_load(f)
         
         if not isinstance(data, dict):
@@ -55,21 +57,21 @@ class Config:
         
         downloads = data.get("downloads", {})
         
-        output = downloads.get("output", Path("Downloads"))
-        remove_image_duplicates = downloads.get("remove_image_duplicates", True)
-        remove_video_duplicates = downloads.get("remove_video_duplicates", True)
-        similarity_threshold = downloads.get("similarity_threshold", 0.9)
-        chunk_size = downloads.get("chunk_size", 1_048_576)
+        output = downloads.get("output")
+        remove_image_duplicates = downloads.get("remove_image_duplicates")
+        remove_video_duplicates = downloads.get("remove_video_duplicates")
+        similarity_threshold = downloads.get("similarity_threshold")
+        chunk_size = downloads.get("chunk_size")
         
         network = data.get("network", {})
         
-        timeout = network.get("timeout", 30)
-        user_agent = network.get("user_agent", {})
-        workers = network.get("workers", 10)
+        timeout = network.get("timeout")
+        user_agent = network.get("user_agent")
+        workers = network.get("workers")
         
         filters = data.get("filters", {})
         
-        excluded_domains = filters.get("excluded_domains", [])
+        excluded_domains = filters.get("excluded_domains")
         
         if isinstance(output, str):
             output = Path(output)
@@ -147,6 +149,23 @@ class Config:
         if not float_verify:
             self._logger.critical(f"One or more floats are invalid!")
             return False
+        
+        self._logger.info(
+            "Initialised with configs:\n"
+            "   Downloads:\n"
+            f"      Remove Image Duplicates: {self.remove_image_duplicates}\n"
+            f"      Remove Video Duplicates: {self.remove_video_duplicates}\n"
+            f"      Similarity Threshold: {self.similarity_threshold * 100}%\n"
+            f"      Chunk Size: {format_bytes(self.chunk_size)}\n"
+            "\n"
+            "   Network:\n"
+            f"      Timeout: {self.timeout} seconds\n"
+            f"      User Agent: {self.user_agent}\n"
+            f"      Workers: {self.workers}\n"
+            "\n"
+            "   Filters:\n"
+            f"      Excluded Domains: {self.excluded_domains}"
+        )
         
         return True
         

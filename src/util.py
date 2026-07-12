@@ -1,5 +1,7 @@
 from urllib.parse import urlparse
 from pathlib import Path
+import sys
+import os
 
 import tldextract
 
@@ -54,3 +56,14 @@ def is_video(path: Path) -> bool:
 
 def get_domain_name(url: str) -> str:
     return tldextract.extract(url).domain
+
+def resource_path(relative_path: str) -> Path:
+    if getattr(sys, "frozen", False):
+        # Running as bundled executable
+        base_path = Path(sys.executable).parent
+    
+    else:
+        # Running from source
+        base_path = Path(os.getcwd())
+    
+    return base_path / relative_path
