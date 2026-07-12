@@ -3,36 +3,31 @@ from datetime import datetime
 from pathlib import Path
 from urllib.parse import urlparse
 from uuid import uuid5, NAMESPACE_URL
-from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from src.models import ExternalURL, DownloadResult
 from src.web import Web
+from src.args import Args
 
 class WebSite:
     def __init__(
             self,
             urls: list[ExternalURL],
-            base_path: Path,
-            chunk_size: int,
-            timeout: int,
+            args: Args,
             logger: logging.Logger | None = None,
             max_workers = 10,
             thread_name = "WebSite"
     ):
         self.max_workers = max_workers
-        self.base_path = base_path
         self.urls = urls
         self.thread_name = thread_name
+        self.args = args
         self.logger = (
             logging.getLogger(__name__)
             if not logger else logger
         )
 
-        self.web = Web(
-            chunk_size = chunk_size,
-            timeout = timeout
-        )
+        self.web = Web(args)
             
     def scrape(self): 
         with ThreadPoolExecutor(
@@ -81,7 +76,7 @@ class WebSite:
         tag_path = (url.tags[0],) if url.tags else ()
 
         file_path = Path(
-            self.base_path,
+            self.args.output,
             *tag_path,
             url.username,
             str(url.created_at.year),

@@ -9,6 +9,7 @@ from bs4 import BeautifulSoup
 
 from .util import get_domain_name
 from .models import DownloadResult, ExternalURL
+from .args import Args
 
 class Web(requests.Session):
     _instance = None
@@ -19,19 +20,14 @@ class Web(requests.Session):
         
         return cls._instance
     
-    def __init__(
-            self,
-            chunk_size: int,
-            timeout: int
-    ):
+    def __init__(self, args: Args):
         if getattr(self, "_initialised", False):
             return
         
         super().__init__()
         self.logger = logging.getLogger("web")
         self.parsed_cookies: set[str] = set()
-        self.chunk_size = chunk_size
-        self.timeout = timeout
+        self.args = args
         
         self.load_headers()
         self.load_adapter()
@@ -108,7 +104,7 @@ class Web(requests.Session):
         reply = super().get(
             url,
             headers = headers,
-            timeout = self.timeout,
+            timeout = self.args.timeout,
             params = params
         )
         
@@ -155,7 +151,7 @@ class Web(requests.Session):
             url = url.url,
             headers = headers,
             params = params,
-            timeout = self.timeout
+            timeout = self.args.timeout
         ) as response:
             # Server ignored Range request, restart download
             if downloaded and response.status_code == 200:
@@ -168,7 +164,7 @@ class Web(requests.Session):
             mode = "ab" if downloaded else "wb"
             
             with open(temp_path, mode) as file:
-                for chunk in response.iter_content(self.chunk_size):
+                for chunk in response.iter_content(self.args.chunk_size):
                     if chunk:
                         file.write(chunk)
             

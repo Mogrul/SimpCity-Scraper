@@ -1,20 +1,13 @@
 import logging
-from concurrent.futures import ThreadPoolExecutor, as_completed
-from datetime import datetime
-from pathlib import Path
 
 from src.models import ExternalURL, DownloadResult
 from .website import WebSite
 
-
 class Turbo(WebSite):
     def __init__(self, *args, **kwargs):
-        logger = kwargs.pop("logger")
-        if not logger:
-            logger = logging.getLogger("website.turbo")
-        
         super().__init__(
-            logger = logger,
+            logger = logging.getLogger("website.turbo"),
+            thread_name = "website.turbo.thread",
             *args,
             **kwargs
         )

@@ -1,10 +1,8 @@
-from urllib.parse import urlparse, ParseResult
+from urllib.parse import urlparse
 import logging
 from datetime import datetime
 from collections import defaultdict
-from uuid import UUID
 from pathlib import Path
-from argparse import Namespace
 
 from bs4 import BeautifulSoup, Tag
 
@@ -13,32 +11,17 @@ from .web import Web
 from .models import ExternalURL
 from .util import is_valid_url, get_domain_name
 from .duplication import Duplication
+from .args import Args
 
 class SimpCity:
-    def __init__(
-            self,
-            args: Namespace
-    ):
-        """SimpCity scraping class to scrape multiple threads
-
-        Args:
-            args (Namespace): Arguments parsed to main.py
-        """
+    def __init__(self):
         self.logger = logging.getLogger("simpcity")
         self.notified_unsupported: set[str] = set()
 
         # Args
-        self.workers = args.workers
-        self.remove_duplicates = bool(args.remove_duplicates)
-        self.urls: list[str] = self._clean_urls(args.urls)
-        self.output = args.output
-        self.chunk_size = args.chunk_size
-        self.timeout = args.timeout
-        
-        self.web = Web(
-            chunk_size = args.chunk_size,
-            timeout = args.timeout
-        )
+        self.args = Args()
+        self.urls: list[str] = self._clean_urls(self.args.urls)
+        self.web = Web(self.args)
         self.duplication = Duplication()
     
     # Init funcs 
@@ -115,8 +98,10 @@ class SimpCity:
             self._scrape_domains(domain_index)
             
             # Check for duplicates
-            if self.remove_duplicates:
-                self.duplication.check_duplicate_images(Path(self.output, username))
+            if self.args.remove_duplicates:
+                self.duplication.check_duplicate_images(
+                    Path(self.args.output, username)
+                )
 
     # Called after urls found
     def _scrape_domains(
@@ -140,14 +125,7 @@ class SimpCity:
             
             urls = domain_index[domain]
             
-            site = site(
-                urls = urls,
-                base_path = self.output,
-                chunk_size = self.chunk_size,
-                timeout = self.timeout,
-                max_workers = self.workers,
-                logger = None
-            )
+            site = site(urls, self.args)
             site.scrape()
 
     # Domain scraping helper func

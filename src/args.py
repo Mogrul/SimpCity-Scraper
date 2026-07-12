@@ -49,3 +49,14 @@ def parse_args() -> Namespace:
     )
     
     return parser.parse_args()
+
+class Args:
+    def __init__(self):
+        args = parse_args()
+        
+        self.urls: list[str] = args.urls
+        self.output: Path = args.output
+        self.workers: int = args.workers
+        self.timeout: int = args.timeout
+        self.remove_duplicates: bool = bool(args.remove_duplicates)
+        self.chunk_size: int = args.chunk_size
