@@ -2,13 +2,12 @@ import threading
 from pathlib import Path
 import logging
 from concurrent.futures import ThreadPoolExecutor
-import shutil
 
 from PIL import Image
 import imagehash
 from imagehash import ImageHash
 
-from .util import is_image
+from .util import is_image, format_bytes
 
 class Duplication:
     _instance = None
@@ -65,16 +64,34 @@ class Duplication:
                 similarity = 1 - (distance / 64)
 
                 if similarity >= similarity_threshold:
-                    self.logger.warning((
-                        "Duplicate Found:\n"
-                        f"  Keep: {img_1}\n"
-                        f"  Delete: {img_2}\n"
-                        f"  Similarity: {similarity:.2%}"
-                    ))
+                    # Remove smallest image
+                    img_1_size = img_1.stat().st_size
+                    img_2_size = img_2.stat().st_size
+
+                    img_1_size_f = format_bytes(img_1_size)
+                    img_2_size_f = format_bytes(img_2_size)
                     
+                    if img_1_size > img_2_size:
+                        img_2.unlink()
+                        self.deleted.add(img_2)
+
+                        self.logger.info(
+                            "Duplicate Found:\n"
+                            f"  Keep ({img_1_size_f}): {img_1}\n"
+                            f"  Delete ({img_2_size_f}): {img_2}\n"
+                            f"  Similarity: {similarity:.2%}"
+                        )
                     
-                    img_2.unlink()
-                    self.deleted.add(img_2)
+                    else:
+                        img_1.unlink()
+                        self.deleted.add(img_1)
+      
+                        self.logger.info(
+                            "Duplicate Found:\n"
+                            f"  Keep ({img_2_size_f}): {img_2}\n"
+                            f"  Delete ({img_1_size_f}): {img_1}\n"
+                            f"  Similarity: {similarity:.2%}"
+                        )
  
     def clear(self):
         self.hashes = {}

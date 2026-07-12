@@ -1,11 +1,15 @@
 import logging
-from urllib.parse import urlparse
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from datetime import datetime
+from pathlib import Path
 
+from src.models import ExternalURL, DownloadResult
 from .website import WebSite
+
 
 class Turbo(WebSite):
     def __init__(self, *args, **kwargs):
-        logger = kwargs.get("logger")
+        logger = kwargs.pop("logger")
         if not logger:
             logger = logging.getLogger("website.turbo")
         
@@ -15,19 +19,26 @@ class Turbo(WebSite):
             **kwargs
         )
     
-    def scrape(self): 
-        for link, created_at in self.link_map.items():
-            signed = self.sign(link)
-            
-            if not signed: continue
-            
-            file_path = self.get_file_path(signed, created_at)
-            self.web.download(
-                signed,
-                destination = file_path,
-                return_dict = True
-            )
-    
+    def on_url_scrape(self, url: ExternalURL) -> list[DownloadResult] | None:
+        super().on_url_scrape(url)
+        
+        signed = self.sign(url.url)
+        
+        if not signed:
+            return []
+        
+        url.url = signed
+        file_path = self.get_file_path(url)
+        downloaded = self.web.download(url, file_path)
+        
+        if not downloaded:
+            return []
+        
+        if not isinstance(downloaded, dict):
+            return []
+
+        return [downloaded]
+        
     def sign(self, url: str) -> str | None:
         def get_embed_id() -> str:
             return url.split("/")[-1]

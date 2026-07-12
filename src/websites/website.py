@@ -1,53 +1,69 @@
-from uuid import UUID
 import logging
 from datetime import datetime
 from pathlib import Path
 from urllib.parse import urlparse
 from uuid import uuid5, NAMESPACE_URL
+from collections.abc import Callable
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
-from src.models import Post
+from src.models import ExternalURL, DownloadResult
 from src.web import Web
 
 class WebSite:
     def __init__(
             self,
-            username: str,
-            post_map: dict[UUID, Post],
-            posts: dict[UUID, list[str]],
+            urls: list[ExternalURL],
             base_path: Path,
             chunk_size: int,
             timeout: int,
             logger: logging.Logger | None = None,
             max_workers = 10,
+            thread_name = "WebSite"
     ):
-        self.username = username
-        self.post_map = post_map
-        self.posts = posts
+        self.max_workers = max_workers
+        self.base_path = base_path
+        self.urls = urls
+        self.thread_name = thread_name
+        self.logger = (
+            logging.getLogger(__name__)
+            if not logger else logger
+        )
+
         self.web = Web(
             chunk_size = chunk_size,
             timeout = timeout
         )
-        self.max_workers = max_workers
-        self.logger = logging.getLogger(__name__) if not logger else logger
-        self.base_path = base_path
-        
-        self.link_map = self.create_link_map()
-    
-    def create_link_map(self) -> dict[str, datetime]:
-        link_map: dict[str, datetime] = {}
-        
-        for post_id, urls in self.posts.items():
-            post = self.post_map[post_id]
             
-            for url in urls:
-                link_map[url] = post.created_at
-        
-        return link_map
-    
-    def scrape(self):
+    def scrape(self): 
+        with ThreadPoolExecutor(
+                max_workers = self.max_workers,
+                thread_name_prefix = self.thread_name
+        ) as executor:
+            future_to_url = {
+                executor.submit(self.on_url_scrape, url): url
+                for url in self.urls
+            }
+
+            for future in as_completed(future_to_url):
+                url = future_to_url[future]
+
+                try:
+                    results = future.result()
+                except Exception as e:
+                    self.logger.error(f"Error downloading {url}: {e}")
+                
+                if not results: continue
+                
+                for result in results:
+                    if not isinstance(result, DownloadResult):
+                        continue
+                    
+                    self.logger.info(f"Downloaded {result.url.url} -> {result.path}")
+            
+    def on_url_scrape(self, url: ExternalURL) -> list[dict] | None:
         pass
     
-    def get_file_path(self, url: str, created_at: datetime):
+    def get_file_path(self, url: ExternalURL):
         def get_file_name() -> Path:
             file_name = parsed.path.replace("/", "")
             
@@ -56,16 +72,24 @@ class WebSite:
             
             return Path(file_name)
         
-        parsed = urlparse(url)
+        parsed = urlparse(url.url)
         file_name = get_file_name()
-        file_id = str(uuid5(NAMESPACE_URL, parsed.geturl())).replace("-", "")[:-16]
+        file_id = str(
+            uuid5(NAMESPACE_URL, parsed.geturl())
+        ).replace("-", "")[:-16]
         
+        tag_path = (url.tags[0],) if url.tags else ()
+
         file_path = Path(
             self.base_path,
-            self.username,
-            str(created_at.year),
-            f"{created_at.strftime('%B')}",
-            f"[{created_at.year}-{created_at.month:02d}-{created_at.day:02d}] {file_id}{file_name.suffix}"
+            *tag_path,
+            url.username,
+            str(url.created_at.year),
+            f"{url.created_at.strftime('%B')}",
+            f"[{url.created_at.year}-{url.created_at.month:02d}-{url.created_at.day:02d}] {file_id}{file_name.suffix}",
         )
         
         return file_path
+
+    def handle_url(self, url: str, created_at: datetime) -> list[dict] | None:
+        pass
