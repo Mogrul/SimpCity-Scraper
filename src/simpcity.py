@@ -10,8 +10,8 @@ from bs4 import BeautifulSoup, Tag
 
 from .websites import WEBSITES
 from .web import Web
-from .models import Post, Thread
-from .util import is_valid_url, to_dict, get_domain_name
+from .models import ExternalURL
+from .util import is_valid_url, get_domain_name
 from .duplication import Duplication
 
 class SimpCity:
@@ -19,13 +19,18 @@ class SimpCity:
             self,
             args: Namespace
     ):
+        """SimpCity scraping class to scrape multiple threads
+
+        Args:
+            args (Namespace): Arguments parsed to main.py
+        """
         self.logger = logging.getLogger("simpcity")
         self.notified_unsupported: set[str] = set()
 
         # Args
         self.workers = args.workers
         self.remove_duplicates = bool(args.remove_duplicates)
-        self.urls: list[str] = self.clean_urls(args.urls)
+        self.urls: list[str] = self._clean_urls(args.urls)
         self.output = args.output
         self.chunk_size = args.chunk_size
         self.timeout = args.timeout
@@ -35,11 +40,18 @@ class SimpCity:
             timeout = args.timeout
         )
         self.duplication = Duplication()
+    
+    # Init funcs 
+    def _clean_urls(self, urls: list[str]) -> list[str]:
+        """Removes garbage and unsupported URLs
+
+        Args:
+            urls (list[str]): A list of URLs passed from args
+
+        Returns:
+            list[str]: A list of sanitised URLs
+        """
         
-        self.post_map: dict[UUID, Post] = {}
-        self.domain_map: dict[str, dict[UUID, list[str]]] = {}
-            
-    def clean_urls(self, urls: list[str]) -> list[str]:
         scrapable_urls = []
         
         for url in urls:
@@ -68,24 +80,23 @@ class SimpCity:
 
         return scrapable_urls
     
+    # Main function
     def scrape(self):
+        """Scraping function to initate scraping of SimpCity threads
+        """
         for url in self.urls:
-            username = self.get_username(url).capitalize()
+            username = self._get_username(url).capitalize()
             soup = self.web.get(url)
             
             if not isinstance(soup, BeautifulSoup):
                 continue
             
-            max_page_count = self.get_max_page_count(soup)
+            max_page_count = self._get_max_page_count(soup)
+            thread_tags = self._get_thread_tags(soup)
             
-            thread = Thread(
-                url = url,
-                username = username,
-                page_count = max_page_count
-            )
-            
+            urls: list[ExternalURL] = []
             for page_num in range(1, max_page_count + 1):
-                page_url = self.get_page_url(url, page_num)
+                page_url = self._get_page_url(url, page_num)
                 
                 if page_num != 1:
                     soup = self.web.get(page_url, referer = url)
@@ -93,22 +104,31 @@ class SimpCity:
                 if not isinstance(soup, BeautifulSoup):
                     continue
                 
-                posts = self.get_posts_in_page(soup)
-                thread.posts.extend(posts)
+                page_urls = self._get_urls_in_page(
+                    soup,
+                    username,
+                    thread_tags
+                )
+                urls.extend(page_urls)
             
-            self.domain_map = self.sort_posts_by_domain(thread)
-            self.scrape_domains(username)
-            
-            # Clear post map on completion
-            self.post_map.clear()
-            self.domain_map.clear()
+            domain_index = self._sort_urls_by_domain(urls)
+            self._scrape_domains(domain_index)
             
             # Check for duplicates
             if self.remove_duplicates:
                 self.duplication.check_duplicate_images(Path(self.output, username))
 
-    def scrape_domains(self, username: str):
-        for domain in self.domain_map.keys():
+    # Called after urls found
+    def _scrape_domains(
+            self,
+            domain_index: dict[str, list[ExternalURL]]
+    ):  
+        """Passes external links to downloaders using a domain index.
+
+        Args:
+            domain_index (dict[str, list[ExternalURL]]): Index of str, list[] ("goonbox": [])
+        """
+        for domain in domain_index.keys():
             if domain not in WEBSITES:
                 continue
             
@@ -118,67 +138,91 @@ class SimpCity:
                 self.logger.error(f"Failed to get site from domain {domain}")
                 continue
             
+            urls = domain_index[domain]
+            
             site = site(
-                username = username,
-                post_map = self.post_map,
-                posts = self.domain_map[domain],
+                urls = urls,
                 base_path = self.output,
-                max_workers = self.workers,
                 chunk_size = self.chunk_size,
                 timeout = self.timeout,
+                max_workers = self.workers,
                 logger = None
             )
             site.scrape()
 
-    def get_username(self, url: str) -> str:
-        thread_name = url.split("/")[-1]
-        username = thread_name.split("-")[0]
+    # Domain scraping helper func
+    def _sort_urls_by_domain(
+            self,
+            urls: list[ExternalURL]
+    ) -> dict[str, list[ExternalURL]]:
+        """Sorts the list of URLs retrieved on a thread scrape into an index of domain: list[url]
+
+        Args:
+            urls (list[ExternalURL]): List of URL objects retrieved from the thread scrape.
+
+        Returns:
+            dict[str, list[ExternalURL]]: A sorted dictionary of domain: list[] ("goonbox": [])
+        """
+        domain_index: defaultdict[str, list[ExternalURL]] = defaultdict(list)
         
-        return username
-    
-    def get_page_url(self, url: str, page_num: int) -> str:
-        return url + f"/page-{page_num}"
-    
-    def get_max_page_count(self, soup: BeautifulSoup) -> int:
-        page_navs_main = soup.find("ul", class_ = "pageNav-main")
-        
-        if not page_navs_main:
-            return 1
-        
-        page_navs = page_navs_main.find_all("li", class_ = "pageNav-page")
-        last_page_nav = page_navs[-1]
-        content = last_page_nav.get_text()
-        
-        try:
-            return int(content)
-        
-        except KeyError:
-            return 1
-        
-    def get_posts_in_page(self, soup: BeautifulSoup) -> list[Post]:
-        posts: list[Post] = []
+        for url in urls:
+            domain_name = url.domain_name
+            
+            domain_index[domain_name].append(url)
+
+        return domain_index
+
+    # Main URL extraction
+    def _get_urls_in_page(
+            self,
+            soup: BeautifulSoup,
+            username: str,
+            thread_tags: list[str]
+    ) -> list[ExternalURL]:
+        """Extracts URL objects from a page in a thread.
+
+        Args:
+            soup (BeautifulSoup): HTML data retrieved from page request.
+            username (str): Name of the Thread (usually username).
+            thread_tags (list[str]): A list of tags in a thread.
+
+        Returns:
+            list[ExternalURL]: A list of URL objects on the page
+        """
+        urls: list[ExternalURL] = []
         
         cells = soup.find_all("div", class_ = "message-cell--main")
         cells = cells[:-1] # Last cell = message box
         
         for cell in cells:
-            post_date = self.get_post_date(cell)            
-            external_links = self.get_post_external_links(cell)
+            post_date = self._get_post_date(cell)            
+            page_urls = self._get_urls_in_post(
+                cell,
+                post_date,
+                username,
+                thread_tags
+            )
             
-            if not external_links:
+            if not page_urls:
                 continue
             
-            post = Post(
-                created_at = post_date,
-                external_links = external_links
-            )
-            self.post_map[post.id] = post
+            urls.extend(page_urls)
             
-            posts.append(post)
-            
-        return posts
-    
-    def get_post_date(self, cell: Tag) -> datetime:
+        return urls
+
+    # URL extraction helpers
+    def _get_post_date(
+            self,
+            cell: Tag,
+    ) -> datetime:
+        """Retrieves the date of a post in a page
+
+        Args:
+            cell (Tag): Tag of the post in a page
+
+        Returns:
+            datetime: date and time of when a post was created.
+        """
         attribution = cell.find("header", class_ = "message-attribution message-attribution--split")
         
         if not attribution: return datetime.now()
@@ -197,17 +241,95 @@ class SimpCity:
             return datetime.now()
 
         return datetime.fromtimestamp(int(timestamp))
+
+    def _get_username(
+            self,
+            url: str
+    ) -> str:
+        """Retrieves the thread name, usually username.
+
+        Args:
+            url (str): URL to the thread (simpcity.cr/threads/belledelphine)
+
+        Returns:
+            str: Username extracted from the URL
+        """
+        thread_name = url.split("/")[-1]
+        username = thread_name.split("-")[0]
+        
+        return username
     
-    def get_post_external_links(self, cell: Tag) -> dict[str, list[str]]:
-        external_links: dict[str, list[str]] = defaultdict(list)
+    def _get_page_url(
+            self,
+            url: str,
+            page_num: int
+    ) -> str:
+        """Retrieves a URL with a page argument to use in requests.
+
+        Args:
+            url (str): URL entry point to the thread.
+            page_num (int): Page number argument to add.
+
+        Returns:
+            str: URL entry point + page number argument
+        """
+        return url + f"/page-{page_num}"
+    
+    def _get_max_page_count(
+            self,
+            soup: BeautifulSoup
+    ) -> int:
+        """Retrieves the total amount of pages in a thread.
+
+        Args:
+            soup (BeautifulSoup): HTML object retrieved from a page request.
+
+        Returns:
+            int: The total amount of pages in a thread.
+        """
+        page_navs_main = soup.find("ul", class_ = "pageNav-main")
+        
+        if not page_navs_main:
+            return 1
+        
+        page_navs = page_navs_main.find_all("li", class_ = "pageNav-page")
+        last_page_nav = page_navs[-1]
+        content = last_page_nav.get_text()
+        
+        try:
+            return int(content)
+        
+        except KeyError:
+            return 1
+
+    def _get_urls_in_post(
+            self,
+            cell: Tag,
+            created_at: datetime,
+            username: str,
+            thread_tags: list[str]
+    ) -> list[ExternalURL]:
+        """Retrieves the external urls in a post from a page obejct.
+
+        Args:
+            cell (Tag): Post HTML element to search through.
+            created_at (datetime): Date of when the post was created.
+            username (str): Username of the thread.
+            thread_tags (list[str]): Tags of a thread.
+
+        Returns:
+            list[ExternalURL]: A list of URL objects
+        """
+        
+        external_urls: list[ExternalURL] = []
         
         content = cell.find("div", class_ = "message-content")
-        if not content: return external_links
-        link_elements = content.find_all("a", class_ = "link--external")
+        if not content: return external_urls
+        url_elements = content.find_all("a", class_ = "link--external")
         iframes = content.find_all("iframe", class_ = "saint-iframe")
         
-        for link_element in link_elements:
-            href = link_element.get("href")
+        for url_element in url_elements:
+            href = url_element.get("href")
             if not isinstance(href, str):
                 continue
             
@@ -220,10 +342,17 @@ class SimpCity:
                         
             match domain_name:
                 case "goonbox":
-                    img_element = link_element.find("img")
+                    img_element = url_element.find("img")
                     
                     if not img_element:
-                        external_links[domain_name].append(href)
+                        external_urls.append(ExternalURL(
+                            created_at = created_at,
+                            url = href,
+                            domain_name = "goonbox",
+                            username = username,
+                            tags = thread_tags
+                        ))
+
                         continue
                     
                     img_src = img_element.get("src")
@@ -233,11 +362,24 @@ class SimpCity:
                     
                     img_src = img_src.replace(".md", "")
                     
-                    external_links[domain_name].append(img_src)
+                    external_urls.append(ExternalURL(
+                        created_at = created_at,
+                        url = img_src,
+                        domain_name = "goonbox",
+                        username = username,
+                        tags = thread_tags
+                    ))
+                    
                     continue
-
-            external_links[domain_name].append(href)
-        
+            
+            external_urls.append(ExternalURL(
+                created_at = created_at,
+                url = href,
+                domain_name = domain_name,
+                username = username,
+                tags = thread_tags
+            ))
+                    
         for iframe in iframes:
             src = iframe.get("src")
             if not isinstance(src, str):
@@ -248,17 +390,43 @@ class SimpCity:
             if domain_name not in WEBSITES:
                 continue
             
-            external_links[domain_name].append(src)
-        
-        return to_dict(external_links)
+            external_urls.append(ExternalURL(
+                created_at = created_at,
+                url = src,
+                domain_name = domain_name,
+                username = username,
+                tags = thread_tags
+            ))
+                
+        return external_urls
     
-    def sort_posts_by_domain(self, thread: Thread):
-        domain_index: defaultdict[str, defaultdict[UUID, list[str]]] = defaultdict(
-            lambda: defaultdict(list)
-        )
-        
-        for post in thread.posts:
-            for domain, url in post.external_links.items():
-                domain_index[domain][post.id].extend(url)
+    def _get_thread_tags(
+            self,
+            soup: BeautifulSoup
+    ) -> list[str]:
+        """Retrieves a list of tag names in a thread.
 
-        return to_dict(domain_index)
+        Args:
+            soup (BeautifulSoup): HTML object of a retrieved page.
+
+        Returns:
+            list[str]: A list of tags on a thread.
+        """
+        tags = []
+        thread_title = soup.find("h1", class_ = "p-title-value")
+        
+        if not thread_title:
+            return tags
+        
+        tag_elements = thread_title.find_all("a", class_ = "labelLink")
+        
+        if not tag_elements:
+            return tags
+        
+        for tag_element in tag_elements:
+            span = tag_element.find("span", class_ = "label")
+            if not span: continue
+            
+            tags.append(span.get_text())
+        
+        return tags

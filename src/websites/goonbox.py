@@ -3,8 +3,9 @@ import logging
 from datetime import datetime
 from urllib.parse import urlparse
 
+from src.models import ExternalURL, DownloadResult
 from .website import WebSite
-from src.util import format_bytes
+from src.util import format_bytes, get_domain_name
 
 class GoonBox(WebSite):
     def __init__(self, *args, **kwargs):
@@ -14,67 +15,34 @@ class GoonBox(WebSite):
         
         super().__init__(
             logger = logger,
+            thread_name = "website.goonbox.thread",
             *args,
             **kwargs
         )
     
-    def scrape(self):
-        with ThreadPoolExecutor(
-                max_workers = self.max_workers,
-                thread_name_prefix = "website.goonbox.thread"
-        ) as executor:
-            futures = [
-                executor.submit(self.handle_url, url, created_at)
-                for url, created_at in self.url_map.items()
-            ]
-            
-            for future in as_completed(futures):
-                try:
-                    result = future.result()
-                
-                except Exception as e:
-                    self.logger.exception(f"Error handling url: {e}")
-                    continue
+    def on_url_scrape(self, url: ExternalURL) -> list[DownloadResult] | None:
+        super().on_url_scrape(url)
     
-                if not result: continue
-                
-                for data in result:
-                    self.logger.info(
-                        f"Downloaded {format_bytes(data['size'])} -> {data['destination']}"
-                    )
-    
-    def handle_url(self, url: str, created_at: datetime) -> list[dict]:
-        if "/a/" in url:
+        if "/a/" in url.url:
             # Album
-            return self.handle_album(url, created_at)
+            return self.handle_album(url)
         
-        return self.handle_image(url, created_at)
+        result = self.handle_image(url)
+        if not result: return None
         
-    def handle_album(self, url: str, created_at: datetime) -> list[dict]:
-        def get_album_id() -> str:
-            id =  url.split("/a/")[1].split("/")[0]
-            if "." in id:
-                return id.split(".")[-1]
-            else:
-                return id
+        return [result]
         
-        def download_page(image: dict) -> list[dict] | None:
-            img_url = image.get("original_url")
-            if not img_url: return
-            
-            download = self.handle_image(img_url, created_at)
-            if not download:
-                return
-            
-            return download
+    def handle_album(self, url: ExternalURL) -> list[DownloadResult]:
+        album_id =  url.url.split("/a/")[1].split("/")[0]
+        if "." in album_id:
+            album_id = album_id.split(".")[-1]
         
-        parsed = urlparse(url)
-        album_id = get_album_id()
+        parsed = urlparse(url.url)
         api_url = "https://" + parsed.netloc + f"/api/albums/{album_id}"
         
         first_page = self.web.get(
             api_url,
-            referer = url,
+            referer = url.url,
             return_dict = True
         )
         
@@ -87,9 +55,11 @@ class GoonBox(WebSite):
             return []
         
         last_page = pagination.get("last_page")
+        
         if not isinstance(last_page, int):
             last_page = 1
-                
+        
+        downloaded: list[DownloadResult] = []
         for page_num in range(1, last_page + 1):
             page_data = first_page
             
@@ -97,48 +67,43 @@ class GoonBox(WebSite):
                 paged_url  = api_url + f"/images?page={page_num}"
                 page_data  = self.web.get(
                     paged_url,
-                    referer = url,
+                    referer = url.url,
                     return_dict = True
                 )
                 
                 if not isinstance(page_data , dict):
                     continue
             
-            images = data.get("images")
+            images = page_data.get("images")
             if not isinstance(images, list):
                 continue
-                        
-            with ThreadPoolExecutor(
-                    self.max_workers,
-                    thread_name_prefix = "website.goonbox.thread"
-            ) as executor:
-                futures = [
-                    executor.submit(download_page, image)
-                    for image in images
-                ]
+
+            for image in images:
+                img_url = image.get("original_url")
+                if not img_url:
+                    return []
                 
-                for future in as_completed(futures):
-                    try:
-                        result = future.result()
-                    
-                    except Exception as e:
-                        self.logger.exception(f"Error downloading page: {e}")
-                        continue
-                    
-                    if not result: continue
-                    for data in result:
-                        self.logger.info(
-                            f"Downloaded {format_bytes(data['size'])} -> {data['destination']}"
-                        )
+                external_url = ExternalURL(
+                    created_at = url.created_at,
+                    url = img_url,
+                    domain_name = get_domain_name(url.url),
+                    username = url.username,
+                    tags = url.tags
+                )
+                
+                download = self.handle_image(external_url)
+                if not download: continue
+                
+                downloaded.append(download)
         
-        return []
+        return downloaded
     
-    def handle_image(self, url: str, created_at: datetime) -> list[dict]:
-        file_path = self.get_file_path(url, created_at)
-        downloaded = self.web.download(url, destination = file_path, return_dict = True)
-        
-        if not isinstance(downloaded, dict):
-            return []
-        
-        return [downloaded]
+    def handle_image(self, url: ExternalURL) -> DownloadResult | None:
+        file_path = self.get_file_path(url)
+        downloaded = self.web.download(
+            url,
+            destination = file_path
+        )
+
+        return downloaded
     

@@ -1,16 +1,17 @@
 from dataclasses import dataclass, field
 from datetime import datetime
-from uuid import uuid4, UUID
+from pathlib import Path
 
 @dataclass
-class Post:
+class ExternalURL:
     created_at: datetime
-    id: UUID = field(default_factory = uuid4)
-    external_links: dict[str, list[str]] = field(default_factory = dict)
+    url: str
+    domain_name: str
+    username: str
+    tags: list[str] = field(default_factory = list)
 
 @dataclass
-class Thread:
-    url: str
-    username: str
-    page_count: int
-    posts: list[Post] = field(default_factory = list)
+class DownloadResult:
+    url: ExternalURL
+    path: Path
+    size: int

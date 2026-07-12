@@ -4,9 +4,11 @@ from pathlib import Path
 import json
 
 import requests
+from requests.adapters import HTTPAdapter
 from bs4 import BeautifulSoup
 
 from .util import get_domain_name
+from .models import DownloadResult, ExternalURL
 
 class Web(requests.Session):
     _instance = None
@@ -32,6 +34,7 @@ class Web(requests.Session):
         self.timeout = timeout
         
         self.load_headers()
+        self.load_adapter()
         
         self._initialised = True
     
@@ -52,6 +55,15 @@ class Web(requests.Session):
         
         self.logger.info(f"Loaded cookies for {domain_name}")
         self.cookies.update(jar)
+  
+    def load_adapter(self):
+        adapter = HTTPAdapter(
+            pool_connections=100,
+            pool_maxsize=100
+        )
+        
+        self.mount("http://", adapter)
+        self.mount("https://", adapter)
     
     def load_headers(self):
         self.headers.update({
@@ -118,17 +130,16 @@ class Web(requests.Session):
 
     def download(
         self,
-        url: str,
+        url: ExternalURL,
         destination: Path,
         referer: str | None = None,
         origin: str | None = None,
-        params: dict | None = None,
-        return_dict = False
-    ) -> Path | dict | None:
+        params: dict | None = None
+    ) -> DownloadResult | None:
         if destination.exists():
             return
         
-        headers = self.build_headers(url, referer, origin)
+        headers = self.build_headers(url.url, referer, origin)
         
         destination.parent.mkdir(parents = True, exist_ok = True)
         temp_path = destination.with_suffix(destination.suffix + ".temp")
@@ -141,7 +152,7 @@ class Web(requests.Session):
             headers["Range"] = f"bytes={downloaded}"
         
         with super().get(
-            url = url,
+            url = url.url,
             headers = headers,
             params = params,
             timeout = self.timeout
@@ -163,11 +174,8 @@ class Web(requests.Session):
             
         temp_path.rename(destination)
         
-        if return_dict:
-            return {
-                "url": url,
-                "destination": destination,
-                "size": destination.stat().st_size
-            }
-
-        return destination
+        return DownloadResult(
+            url = url,
+            path = destination,
+            size = destination.stat().st_size
+        )

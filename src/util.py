@@ -16,11 +16,6 @@ def is_valid_url(url: str) -> bool:
     except Exception:
         return False
 
-def to_dict(d) -> dict:
-    if isinstance(d, defaultdict):
-        return {k: to_dict(v) for k, v in d.items()}
-    return d
-
 def format_bytes(size: int) -> str:
     value = float(size)
     
