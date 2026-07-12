@@ -1,7 +1,8 @@
 import threading
 from pathlib import Path
 import logging
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from concurrent.futures import ThreadPoolExecutor, as_completed, wait, FIRST_COMPLETED
+from tqdm import tqdm
 
 from PIL import Image
 import imagehash
@@ -26,6 +27,7 @@ class Duplication:
         
         self.logger = logging.getLogger("duplication")
         self.config = Config()
+        self.max_pending = self.config.workers * 100
         
         self.image_hashes: dict[Path, ImageHash] = {}
         self.image_hash_lock = threading.Lock()
@@ -61,9 +63,8 @@ class Duplication:
             self.logger.info(f"No images found in {path}")
             return
         
-        hashed = 0
         with ThreadPoolExecutor(
-                max_workers = self.config.workers,
+                max_workers = self.config.workers * 10,
                 thread_name_prefix = "duplication.hashing.image"
         ) as executor:
             futures = [
@@ -71,85 +72,127 @@ class Duplication:
                 for image in images
             ]
             
-            for future in as_completed(futures):
-                try:
-                    result = future.result()
-                
-                except Exception as e:
-                    self.logger.info(f"Failed to hash image: {e}")
-                    continue
-                
-                if result: hashed += 1 
-        
-        self.logger.info(f"Hashed {hashed} images")
+            with tqdm(
+                    total = len(images),
+                    desc = "Hashing images"
+            ) as progress:
+                for future in as_completed(futures):
+                    try:
+                        result = future.result()
+                    
+                    except Exception as e:
+                        self.logger.info(f"Failed to hash image: {e}")
+                        progress.update(1)
+                        continue
+                        
+                    progress.update(1)
         
         images = list(self.image_hashes.items())
-        deleted = 0
+        to_delete: list[dict] = []
         
         self.logger.info(f"Comparing hashes...")
         with ThreadPoolExecutor(
-                max_workers = self.config.workers,
-                thread_name_prefix = "duplication.comparison.image"
+            max_workers = self.config.workers * 10,
+            thread_name_prefix = "duplication.comparison.image"
         ) as executor:
-            futures = []
-            
-            for i, (img_1, hash_1) in enumerate(images):
-                if img_1 in self.deleted_images:
-                    continue
-                
-                for img_2, hash_2, in images[i + 1:]:
-                    if img_2 in self.deleted_images:
+
+            futures = set()
+
+            with tqdm(
+                total=len(images) * (len(images) - 1) // 2,
+                desc="Comparing image hashes"
+            ) as progress:
+
+                for i, (img_1, hash_1) in enumerate(images):
+                    if img_1 in self.deleted_images:
                         continue
-                    
-                    futures.append(
-                        executor.submit(
-                            self._compare_image_pairs,
-                            img_1,
-                            hash_1,
-                            img_2,
-                            hash_2
+
+                    for img_2, hash_2 in images[i + 1:]:
+                        if img_2 in self.deleted_images:
+                            continue
+
+                        futures.add(
+                            executor.submit(
+                                self._compare_image_pairs,
+                                img_1,
+                                hash_1,
+                                img_2,
+                                hash_2
+                            )
                         )
-                    )
-            
-            for future in as_completed(futures):
-                try:
-                    result = future.result()
-                
-                except Exception as e:
-                    self.logger.error(f"Error comparing image hashes: {e}")
-                    continue
-                
-                if result is not None:
-                    to_delete = result["deleted"]
-                    to_delete_path = to_delete["path"]
-                    to_delete_size = to_delete["size"]
-                    
-                    kept = result["kept"]
-                    kept_path = kept["path"]
-                    kept_size = kept["size"]
-                    
-                    similarity = result["similarity"]
-                    
-                    self.logger.info(
-                        "Duplicate found:\n"
-                        "  Deleting:\n"
-                        f"      Path: {to_delete_path}\n"
-                        f"      Size: {format_bytes(to_delete_size)}\n"
-                        "  Keeping:\n"
-                        f"      Path: {kept_path}\n"
-                        f"      Size: {format_bytes(kept_size)}"
-                        f"  Similarity: {similarity * 100}%"
-                    )
-                    
-                    to_delete_path.unlink()
-                    self.deleted_images.add(to_delete_path)
-                    deleted += 1
+
+                        # Wait until some work finishes before adding more
+                        if len(futures) >= self.max_pending:
+                            done, futures = wait(
+                                futures,
+                                return_when = FIRST_COMPLETED
+                            )
+
+                            for future in done:
+                                try:
+                                    result = future.result()
+                                    if result is not None:
+                                        to_delete.append(result)
+
+                                except Exception as e:
+                                    self.logger.error(
+                                        f"Error comparing image hashes: {e}"
+                                    )
+
+                                progress.update(1)
+
+                # Finish remaining futures
+                for future in as_completed(futures):
+                    try:
+                        result = future.result()
+                        if result is not None:
+                            to_delete.append(result)
+
+                    except Exception as e:
+                        self.logger.error(
+                            f"Error comparing image hashes: {e}"
+                        )
+
+                    progress.update(1)
         
-        if deleted == 0:
+        deleted_count = 0
+        
+        for result in to_delete:
+            deleted = result["deleted"]
+            to_delete_path = deleted["path"]
+            to_delete_size = deleted["size"]
+            
+            kept = result["kept"]
+            kept_path = kept["path"]
+            kept_size = kept["size"]
+            
+            similarity = result["similarity"]
+            
+            self.logger.info(
+                "Duplicate found:\n"
+                "  Deleting:\n"
+                f"      Path: {to_delete_path}\n"
+                f"      Size: {format_bytes(to_delete_size)}\n"
+                "  Keeping:\n"
+                f"      Path: {kept_path}\n"
+                f"      Size: {format_bytes(kept_size)}"
+                f"  Similarity: {similarity * 100}%"
+            )
+            
+            try:
+                to_delete_path.unlink()
+                self.deleted_images.add(to_delete_path)
+                deleted_count += 1
+            
+            except Exception as e:
+                self.logger.error(f"Error deleting path: {deleted} {e}")
+                continue
+        
+        if deleted_count == 0:
             self.logger.info(f"Found no duplicate images")
         
         else:
-            self.logger.info(f"Deleted {deleted} images")
+            self.logger.info(f"Deleted {deleted_count} images")
  
     def check_duplicate_videos(
             self,
@@ -175,7 +218,6 @@ class Duplication:
             self.logger.info(f"No videos found in {path}")
             return
         
-        hashed = 0
         with ThreadPoolExecutor(
                 max_workers = self.config.workers,
                 thread_name_prefix = "duplication.hashing.video"
@@ -185,81 +227,124 @@ class Duplication:
                 for video in videos
             ]
             
-            for future in as_completed(futures):
-                try:
-                    result = future.result()
-                
-                except Exception as e:
-                    self.logger.info(f"Failed to hash video: {e}")
-                    continue
-                
-                if result: hashed += 1 
-        
-        self.logger.info(f"Hashed {hashed} videos")     
-           
+            with tqdm(
+                    total = len(videos),
+                    desc = "Hashing videos"
+            ) as progress:
+                for future in as_completed(futures):
+                    try:
+                        result = future.result()
+                    
+                    except Exception as e:
+                        self.logger.info(f"Failed to hash video: {e}")
+                        progress.update(1)
+                        continue
+                    
+                    progress.update(1)
+
         videos = list(self.video_hashes.items())
-        deleted = 0
+        to_delete: list[dict] = []
         
         self.logger.info(f"Comparing hashes...")
         with ThreadPoolExecutor(
                 max_workers = self.config.workers,
                 thread_name_prefix = "duplication.comparison.video"
         ) as executor:
-            futures = []
+            futures = set()
             
-            for i, (vid_1, hashes_1) in enumerate(videos):
-                if vid_1 in self.deleted_videos:
-                    continue
-                
-                for vid_2, hashes_2 in videos[i + 1:]:
-                    if vid_2 in self.deleted_videos:
+            with tqdm(
+                total = len(videos) * (len(videos) - 1) // 2,
+                desc = "Comparing video hashes"
+            ) as progress:
+                for i, (vid_1, hashes_1) in enumerate(videos):
+                    if vid_1 in self.deleted_videos:
                         continue
                     
-                    futures.append(
-                        executor.submit(
-                            self._compare_video_pairs,
-                            vid_1,
-                            hashes_1,
-                            vid_2,
-                            hashes_2
+                    for vid_2, hashes_2 in videos[i + 1:]:
+                        if vid_2 in self.deleted_videos:
+                            continue
+                        
+                        futures.add(
+                            executor.submit(
+                                self._compare_video_pairs,
+                                vid_1,
+                                hashes_1,
+                                vid_2,
+                                hashes_2
+                            )
                         )
-                    )
+                        
+                        # Wait until some work finishes before adding more
+                        
+                        if len(futures) >= self.max_pending:
+                            done, futures = wait(
+                                futures,
+                                return_when = FIRST_COMPLETED
+                            )
+                            
+                            for future in done:
+                                try:
+                                    result = future.result()
+                                    
+                                    if result is not None:
+                                        to_delete.append(result)
+                                
+                                except Exception as e:
+                                    self.logger.error(
+                                        f"Error comparing video hashes: {e}"
+                                    )
+                                
+                                progress.update(1)
+                
+                # Finish remaining
+                for future in as_completed(futures):
+                    try:
+                        result = future.result()
+                        if result is not None:
+                            to_delete.append(result)
+                        
+                    except Exception as e:
+                        self.logger.error(
+                            f"Error comparing video hashes: {e}"
+                        )
+                    
+                    progress.update(1)
 
-            for future in as_completed(futures):
-                try:
-                    result = future.result()
-                
-                except Exception as e:
-                    self.logger.error(f"Error comparing video hashes: {e}")
-                    continue
-                
-                if result is not None:
-                    to_delete = result["deleted"]
-                    to_delete_path = to_delete["path"]
-                    to_delete_size = to_delete["size"]
-                    
-                    kept = result["kept"]
-                    kept_path = kept["path"]
-                    kept_size = kept["size"]
-                    
-                    similarity = result["similarity"]
-                    
-                    self.logger.info(
-                        "Duplicate found:\n"
-                        "  Deleting:\n"
-                        f"      Path: {to_delete_path}\n"
-                        f"      Size: {format_bytes(to_delete_size)}\n"
-                        "  Keeping:\n"
-                        f"      Path: {kept_path}\n"
-                        f"      Size: {format_bytes(kept_size)}"
-                        f"  Similarity: {similarity * 100}%"
-                    )
-                    
-                    to_delete_path.unlink()
-                    self.deleted_videos.add(to_delete_path)
-                    deleted += 1
+        deleted_count = 0
+        
+        for result in to_delete:
+            deleted = result["deleted"]
+            to_delete_path = deleted["path"]
+            to_delete_size = deleted["size"]
             
-        if deleted == 0:
+            kept = result["kept"]
+            kept_path = kept["path"]
+            kept_size = kept["size"]
+            
+            similarity = result["similarity"]
+            
+            self.logger.info(
+                "Duplicate found:\n"
+                "  Deleting:\n"
+                f"      Path: {to_delete_path}\n"
+                f"      Size: {format_bytes(to_delete_size)}\n"
+                "  Keeping:\n"
+                f"      Path: {kept_path}\n"
+                f"      Size: {format_bytes(kept_size)}"
+                f"  Similarity: {similarity * 100}%"
+            )
+            
+            try:
+                to_delete_path.unlink()
+            
+                self.deleted_videos.add(to_delete_path)
+                deleted_count += 1
+            
+            except Exception as e:
+                self.logger.error(f"Error deleting path: {deleted} {e}")
+                continue
+            
+        if deleted_count == 0:
             self.logger.info(f"Found no duplicate videos")
         
         else:
