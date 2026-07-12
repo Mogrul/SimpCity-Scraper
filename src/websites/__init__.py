@@ -5,6 +5,6 @@ from .turbo import Turbo
 
 WEBSITES: dict[str, type[WebSite]] = {
     "goonbox": GoonBox,
-    #"turbo": Turbo,
+    "turbo": Turbo,
     "simpcity": WebSite
 }

@@ -35,6 +35,9 @@ class Duplication:
             recursive = True,
             similarity_threshold = 0.90
     ):
+        if not path.exists():
+            return
+        
         self.logger.info(f"Checking for duplicates in {path}")
         if recursive:
             images = [

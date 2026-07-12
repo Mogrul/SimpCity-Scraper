@@ -11,7 +11,8 @@ from .web import Web
 from .models import ExternalURL
 from .util import is_valid_url, get_domain_name
 from .duplication import Duplication
-from .args import Args
+
+from src import config
 
 class SimpCity:
     def __init__(self):
@@ -19,17 +20,13 @@ class SimpCity:
         self.notified_unsupported: set[str] = set()
 
         # Args
-        self.args = Args()
-        self.urls: list[str] = self._clean_urls(self.args.urls)
-        self.web = Web(self.args)
+        self.urls: list[str] = self._clean_urls()
+        self.web = Web()
         self.duplication = Duplication()
     
     # Init funcs 
-    def _clean_urls(self, urls: list[str]) -> list[str]:
+    def _clean_urls(self) -> list[str]:
         """Removes garbage and unsupported URLs
-
-        Args:
-            urls (list[str]): A list of URLs passed from args
 
         Returns:
             list[str]: A list of sanitised URLs
@@ -37,7 +34,7 @@ class SimpCity:
         
         scrapable_urls = []
         
-        for url in urls:
+        for url in config.URLS:
             scheme = urlparse(url).scheme
             domain_name = get_domain_name(url)
 
@@ -98,9 +95,9 @@ class SimpCity:
             self._scrape_domains(domain_index)
             
             # Check for duplicates
-            if self.args.remove_duplicates:
+            if config.REMOVE_DUPLICATES:
                 self.duplication.check_duplicate_images(
-                    Path(self.args.output, username)
+                    Path(config.OUTPUT, username)
                 )
 
     # Called after urls found
@@ -125,7 +122,7 @@ class SimpCity:
             
             urls = domain_index[domain]
             
-            site = site(urls, self.args)
+            site = site(urls)
             site.scrape()
 
     # Domain scraping helper func
@@ -322,6 +319,9 @@ class SimpCity:
                 case "goonbox":
                     img_element = url_element.find("img")
                     
+                    if "goonbox" in config.EXCLUDE_DOMAINS:
+                        continue
+                    
                     if not img_element:
                         external_urls.append(ExternalURL(
                             created_at = created_at,
@@ -350,6 +350,9 @@ class SimpCity:
                     
                     continue
             
+            if domain_name in config.EXCLUDE_DOMAINS:
+                continue
+            
             external_urls.append(ExternalURL(
                 created_at = created_at,
                 url = href,
@@ -366,6 +369,9 @@ class SimpCity:
             domain_name = get_domain_name(src)
             
             if domain_name not in WEBSITES:
+                continue
+            
+            if domain_name in config.EXCLUDE_DOMAINS:
                 continue
             
             external_urls.append(ExternalURL(
