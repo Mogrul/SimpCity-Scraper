@@ -24,3 +24,14 @@ if __name__ == "__main__":
 
     simpcity = SimpCity()
     simpcity.scrape()
+    os._exit(0)
+    url = "https://cyberdrop.cr/e/H7iuJcmRs2oNx"
+    id = url.split("/")[-1]
+    
+    from src.web import Web
+    
+    w = Web()
+    print(w.get(
+        url = f"https://api.cyberdrop.cr/api/file/auth/{id}",
+        return_dict = True
+    ))

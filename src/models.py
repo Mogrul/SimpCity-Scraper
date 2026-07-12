@@ -8,6 +8,8 @@ class ExternalURL:
     url: str
     domain_name: str
     username: str
+    file_name: Path | None = None
+    signed: str | None = None
     tags: list[str] = field(default_factory = list)
 
 @dataclass

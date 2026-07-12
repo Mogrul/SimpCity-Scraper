@@ -3,8 +3,10 @@ import logging
 from datetime import datetime
 from collections import defaultdict
 from pathlib import Path
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from bs4 import BeautifulSoup, Tag
+from tqdm import tqdm
 
 from .websites import WEBSITES
 from .web import Web
@@ -65,6 +67,31 @@ class SimpCity:
     def scrape(self):
         """Scraping function to initate scraping of SimpCity threads
         """
+        def get_page(
+                url: str,
+                page_num: int,
+                username: str,
+                thread_tags: list[str]
+        ) -> list[ExternalURL] | None:
+            page_url = self._get_page_url(url, page_num)
+            
+            soup = self.web.get(
+                page_url,
+                referer = url,
+                log = False
+            )
+            
+            if not isinstance(soup, BeautifulSoup):
+                return
+            
+            page_urls = self._get_urls_in_page(
+                soup,
+                username,
+                thread_tags
+            )
+            
+            return page_urls
+        
         for url in self.config.urls:
             username = self._get_username(url).capitalize()
             soup = self.web.get(url)
@@ -82,21 +109,35 @@ class SimpCity:
             )
             
             urls: list[ExternalURL] = []
-            for page_num in range(1, max_page_count + 1):
-                page_url = self._get_page_url(url, page_num)
+            
+            self.logger.info(f"Retrieving pages in {url}")
+            with ThreadPoolExecutor(
+                    max_workers = self.config.workers,
+                    thread_name_prefix = "simpcity.page.thread"
+            ) as executor:
+                futures = [
+                    executor.submit(get_page, url, page_num, username, thread_tags)
+                    for page_num in range(1, max_page_count + 1)
+                ]
                 
-                if page_num != 1:
-                    soup = self.web.get(page_url, referer = url)
-
-                if not isinstance(soup, BeautifulSoup):
-                    continue
-                
-                page_urls = self._get_urls_in_page(
-                    soup,
-                    username,
-                    thread_tags
-                )
-                urls.extend(page_urls)
+                with tqdm(
+                        total = len(futures),
+                        desc = "Getting thread pages"
+                ) as progress:
+                    for future in as_completed(futures):
+                        try:
+                            result = future.result()
+                        
+                        except Exception as e:
+                            self.logger.error(f"Error grabbing page: {e}")
+                            progress.update(1)
+                            continue
+                        
+                        if not result:
+                            progress.update(1)
+                            continue
+                        
+                        urls.extend(result)
             
             domain_index = self._sort_urls_by_domain(urls)
             self._scrape_domains(domain_index)

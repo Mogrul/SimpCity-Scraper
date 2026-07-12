@@ -389,6 +389,9 @@ class Duplication:
             
             frame_count = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
             
+            if frame_count <= 0:
+                return None
+            
             for i in range(samples):
                 frame_index = int(frame_count * ((i * 1) / (samples + 1)))
                 
@@ -409,6 +412,10 @@ class Duplication:
         
         except Exception as e:
             self.logger.error(f"Failed to hash video {path}: {e}")
+        
+        finally:
+            if cap is not None:
+                cap.release()
         
         with self.video_hash_lock:
             self.video_hashes[path] = hashes
