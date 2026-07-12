@@ -75,11 +75,8 @@ def load_logger():
     f_handler = FileHandler()
     f_handler.setFormatter(FileFormatter())
     
-    logging.getLogger("httpx").setLevel(logging.WARNING)
-    logging.getLogger("telegram").setLevel(logging.WARNING)
-    logging.getLogger("telegram.ext").setLevel(logging.WARNING)
-    logging.getLogger("APPLICATION").setLevel(logging.WARNING)
-    logging.getLogger("apscheduler").setLevel(logging.WARNING)
+    logging.getLogger("PIL").setLevel(logging.WARNING)
+    logging.getLogger("URLLIB3").setLevel(logging.WARNING)
     
     logger.handlers.clear()
     logger.addHandler(c_handler)

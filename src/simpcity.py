@@ -138,6 +138,7 @@ class SimpCity:
                             continue
                         
                         urls.extend(result)
+                        progress.update(1)
             
             domain_index = self._sort_urls_by_domain(urls)
             self._scrape_domains(domain_index)
@@ -388,7 +389,15 @@ class SimpCity:
                 continue
             
             if not is_valid_url(href):
-                continue
+                # Handle redirects
+                if "/redirect/" in href:
+                    href = url_element.get_text()
+                    
+                    if not href:
+                        continue
+                    
+                else:
+                    continue
             
             domain_name = get_domain_name(href)
             if domain_name not in WEBSITES:

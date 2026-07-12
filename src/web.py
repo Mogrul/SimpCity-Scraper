@@ -68,7 +68,7 @@ class Web(requests.Session):
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
                         "AppleWebKit/537.36 (KHTML, like Gecko) "
                         "Chrome/138.0.0.0 Safari/537.36",
-            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7",
             "Accept-Language": "en-GB,en;q=0.9",
         })
     
@@ -112,7 +112,7 @@ class Web(requests.Session):
             timeout = self.config.timeout
         )
         
-        self.logger.info(f"Sent POST request: {url}")
+        self.logger.debug(f"Sent POST request: {url}")
         
         try:
             return reply.json()
@@ -145,7 +145,7 @@ class Web(requests.Session):
             return None
         
         if log:
-            self.logger.info(f"Sent GET request: {url}")
+            self.logger.debug(f"Sent GET request: {url}")
         
         if return_headers:
             return dict(reply.headers)
@@ -188,7 +188,7 @@ class Web(requests.Session):
             timeout = self.config.timeout
         )
         
-        self.logger.info(f"Sent API request to: {url}")
+        self.logger.debug(f"Sent API request to: {url}")
         
         if reply.status_code != 200:
             self.logger.error(f"Failed with status: {reply.status_code} for {url}")
