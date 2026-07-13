@@ -44,6 +44,12 @@ class Duplication:
             path: Path,
             recursive = True
     ):
+        """Checks a Path for duplicate images.
+
+        Args:
+            path (Path): Path to check.
+            recursive (bool, optional): Whether to recurse into multiple folders or not. Defaults to True.
+        """
         if not path.exists():
             return
         
@@ -199,6 +205,12 @@ class Duplication:
             path: Path,
             recursive = True
     ):
+        """Checks a Path for duplicate videos.
+
+        Args:
+            path (Path): Path to check.
+            recursive (bool, optional): Whether to scan recursively through a directory. Defaults to True.
+        """
         if not path.exists():
             return
         
@@ -351,6 +363,8 @@ class Duplication:
             self.logger.info(f"Deleted {deleted} videos")
  
     def clear(self):
+        """Clears the dictionaries and sets of the base class for the next thread.
+        """
         self.image_hashes = {}
         self.deleted_images = set()
         
@@ -358,6 +372,14 @@ class Duplication:
         self.deleted_videos = set()
     
     def hash_image(self, path: Path) -> ImageHash | None:
+        """Hashes an image from a given path.
+
+        Args:
+            path (Path): Path to the image.
+
+        Returns:
+            ImageHash | None: Hashed image.
+        """
         with self.image_hash_lock:
             if path in self.image_hashes:
                 return self.image_hashes[path]
@@ -375,6 +397,15 @@ class Duplication:
             return None
     
     def hash_video(self, path: Path, samples = 3) -> list[ImageHash] | None:
+        """Hashes a video from a given path.
+
+        Args:
+            path (Path): Path to the video.
+            samples (int, optional): Amount of frames to hash in a video. Defaults to 3.
+
+        Returns:
+            list[ImageHash] | None: A list of frame hashes from a video.
+        """
         with self.video_hash_lock:
             if path in self.video_hashes:
                 return self.video_hashes[path]
@@ -429,6 +460,17 @@ class Duplication:
             vid_2: Path,
             hashes_2: list[ImageHash]
     ) -> dict | None:
+        """Compares two different video hashes to check for similarities.
+
+        Args:
+            vid_1 (Path): First video to compare to second.
+            hashes_1 (list[ImageHash]): First hash to compare to second.
+            vid_2 (Path): Second video to compare to first.
+            hashes_2 (list[ImageHash]): Second hash to compare to first.
+
+        Returns:
+            dict | None: A dictionary of data if a comparison is found.
+        """
         if len(hashes_1) != len(hashes_2):
             return None
             
@@ -470,6 +512,17 @@ class Duplication:
             img_2: Path,
             hash_2: ImageHash
     ) -> dict | None:
+        """Compares two different image hashes to find similarities.
+
+        Args:
+            img_1 (Path): First image path to compare to second.
+            hash_1 (ImageHash): First image hash to compare to second.
+            img_2 (Path): Second image path to compare to first.
+            hash_2 (ImageHash): Second image hash to compare to first.
+
+        Returns:
+            dict | None: A dictionary of data related to the images and hashes if a similarity is found.
+        """
         similarty = (
             1 - ((
                 hash_1 - hash_2

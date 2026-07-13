@@ -45,6 +45,15 @@ class Config:
             args: Namespace,
             config_path = "config.yaml"
     ) -> bool:
+        """Loads the configs from args and the config.yaml path
+
+        Args:
+            args (Namespace): Namespace retrieved from the parsing of arguments.
+            config_path (str, optional): Path to the config.yaml file. Defaults to "config.yaml".
+
+        Returns:
+            bool: True if success, False if not.
+        """
         urls = args.urls
         
         with open(resource_path(config_path), "r") as f:
@@ -93,6 +102,11 @@ class Config:
         return True
     
     def verify_config(self) -> bool:
+        """Verifies that all the values in the config are the object types they should be.
+
+        Returns:
+            bool: True if passed, False if not.
+        """
         # Int verify
         int_success = self._verify_by_class(int, [
             self.chunk_size,
@@ -170,6 +184,15 @@ class Config:
         return True
         
     def _verify_by_class(self, cls: type, objects: list[object]) -> bool:
+        """Verify config helper function to verify a list of objects are the object type they should be.
+
+        Args:
+            cls (type): Object type to check against the objects.
+            objects (list[object]): List of objects to check the type again.
+
+        Returns:
+            bool: True of passed, False if not.
+        """
         if not all(isinstance(x, cls) for x in objects):
             return False
         
