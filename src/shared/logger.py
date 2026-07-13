@@ -30,7 +30,10 @@ class ConsoleFormatter(logging.Formatter):
             msg
         )
         
-        return f"{time_str} {level_str} {name_str} {thread_str} {msg_str}"
+        return (
+            f"{time_str} {level_str} {name_str} {thread_str}\n"
+            f"          {msg_str}"
+        )
 
 class FileHandler(logging.FileHandler):
     def __init__(self, log_dir = "logs"):
@@ -63,7 +66,7 @@ class FileFormatter(logging.Formatter):
 
         return f"{time} {level:<8} {name.upper():<10} {thread.upper():<15} {msg}"
 
-def load_logger():
+def load_logger() -> logging.Logger:
     """Loads the default logging configuration into the code.
     """
     logger = logging.getLogger()
@@ -83,3 +86,5 @@ def load_logger():
     logger.handlers.clear()
     logger.addHandler(c_handler)
     logger.addHandler(f_handler)
+    
+    return logger
