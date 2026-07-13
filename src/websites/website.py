@@ -44,6 +44,7 @@ class WebSite:
                     results = future.result()
                 except Exception as e:
                     self.logger.error(f"Error downloading {url}: {e}")
+                    continue
                 
                 if not results: continue
                 

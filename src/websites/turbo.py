@@ -1,4 +1,5 @@
 import logging
+from pathlib import Path
 
 from src.models import ExternalURL, DownloadResult
 from .website import WebSite
@@ -30,5 +31,6 @@ class Turbo(WebSite):
         if isinstance(data, dict):
             if data.get("success", False):
                 url.signed = data["url"]
+                url.file_name = Path(data["filename"])
         
         return url

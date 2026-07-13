@@ -2,8 +2,8 @@ import threading
 from pathlib import Path
 import logging
 from concurrent.futures import ThreadPoolExecutor, as_completed, wait, FIRST_COMPLETED
-from tqdm import tqdm
 
+from tqdm import tqdm
 from PIL import Image
 import imagehash
 import cv2

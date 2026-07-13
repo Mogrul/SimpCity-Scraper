@@ -1,6 +1,5 @@
 import argparse
 from argparse import Namespace
-from pathlib import Path
 
 def parse_args() -> Namespace:
     parser = argparse.ArgumentParser(

@@ -5,7 +5,7 @@ downloads:
   # Remove duplicate files after downloading thread.
   remove_image_duplicates: True
   remove_video_duplicates: True
-  similarity_theshold: 0.9 # % to delete files at .1 = 10%
+  similarity_threshold: 0.9 # % to delete files at .1 = 10%
 
   # Number of bytes to read/write at a time when downloading.
   # 1048576 = 1 MiB
