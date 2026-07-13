@@ -3,7 +3,7 @@
   <img src="https://count.getloli.com/@Mogrul?name=Mogrul&theme=rule34&padding=7&offset=0&align=top&scale=1&pixelated=1&darkmode=1">
 </div>
 
-# Simp Scraper
+# Simpcity Scraper
 A multi-threaded scraper for simpcity.cr threads that automatically crawls through multiple pages, extracts external media URLs from posts, and downloads the associated content.
 
 Once a thread has been processed, the tool can optionally scan downloaded images and videos for duplicates, helping eliminate redundant files and keep your collection organized.
