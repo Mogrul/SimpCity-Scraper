@@ -5,8 +5,6 @@ import re
 import threading
 import os
 
-from src.util import resource_path
-
 class ConsoleFormatter(logging.Formatter):
     TIME = "\x1b[1;90m"
     LEVEL = "\x1b[34m"
@@ -36,7 +34,7 @@ class ConsoleFormatter(logging.Formatter):
 
 class FileHandler(logging.FileHandler):
     def __init__(self, log_dir = "logs"):
-        os.makedirs(resource_path(log_dir), exist_ok = True)
+        os.makedirs(log_dir, exist_ok = True)
         
         # unique per run
         timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
