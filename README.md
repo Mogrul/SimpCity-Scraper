@@ -10,6 +10,10 @@ Once a thread has been processed, the tool can optionally scan downloaded images
 
 Downloaded files are named using the original post date and a unique identifier generated from the direct media URL and original filename. This ensures that different files receive distinct IDs while the same file downloaded multiple times will always produce the same identifier, preventing duplicate downloads.
 
+<p align="center">
+  <img src="https://github.com/Mogrul/SimpCity-Scraper/blob/main/assets/header.jpg" alt="Logo" width="300">
+</p>
+
 ## Usage
 ### Executable (Recommended)
 - Download the executable from [Latest Release](https://github.com/Mogrul/SimpCity-Scraper/releases/latest)
