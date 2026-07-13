@@ -17,6 +17,13 @@ class WebSite:
             logger: logging.Logger | None = None,
             thread_name = "WebSite"
     ):
+        """WebSite BaseClass used for supported websites.
+
+        Args:
+            urls (list[ExternalURL]): A list of URLs the supported website will download.
+            logger (logging.Logger | None, optional): Logger of the supported website generated in child classes. Defaults to None.
+            thread_name (str, optional): Name of the supported website threads generated in child classes. Defaults to "WebSite".
+        """
         self.urls = urls
         self.thread_name = thread_name
         self.logger = (
@@ -27,7 +34,9 @@ class WebSite:
 
         self.web = Web()
             
-    def scrape(self): 
+    def scrape(self):
+        """Scrapes through the URLs in self.urls concurrently, calling the self.on_url_scrape function.
+        """
         with ThreadPoolExecutor(
                 max_workers = self.config.workers,
                 thread_name_prefix = self.thread_name
@@ -59,9 +68,22 @@ class WebSite:
                         self.logger.info(f"Downloaded {result.url.url} -> {result.path}")
             
     def on_url_scrape(self, url: ExternalURL) -> list[DownloadResult] | None:
+        """Function called when a future is submitted to scrape a single URL.
+
+        Args:
+            url (ExternalURL): URL object to scrape.
+
+        Returns:
+            list[DownloadResult] | None: A list of download results on successful download.
+        """
         pass
     
-    def get_file_path(self, url: ExternalURL):
+    def get_file_path(self, url: ExternalURL) -> Path:
+        """Obtains a path to download to from a URL object.
+
+        Args:
+            url (ExternalURL): URL object to extract a path from.
+        """
         def get_file_name() -> Path:
             file_name = parsed.path.replace("/", "")
             
@@ -98,11 +120,16 @@ class WebSite:
         )
         
         return file_path
-
-    def handle_url(self, url: str, created_at: datetime) -> list[dict] | None:
-        pass
     
     def sign_and_download(self, url: ExternalURL) -> list[DownloadResult] | None:
+        """Signs a URL object called from child classes and downloads them to their paths.
+
+        Args:
+            url (ExternalURL): URL object to download.
+
+        Returns:
+            list[DownloadResult] | None: A list of download results from the download.
+        """
         self.sign(url)
         
         if not url.signed:
@@ -120,9 +147,25 @@ class WebSite:
         return [downloaded]
     
     def sign(self, url: ExternalURL) -> ExternalURL | None:
+        """A function used in child classes to sign a URL to download.
+
+        Args:
+            url (ExternalURL): URL object to sign.
+
+        Returns:
+            ExternalURL | None: URL object with the signed URL updated.
+        """
         pass
     
     def attempt_extraction(self, result: DownloadResult) -> list[DownloadResult] | None:
+        """Attempts to extract archived files downloaded on DownloadResult
+
+        Args:
+            result (DownloadResult): The result of a download to check if extractable.
+
+        Returns:
+            list[DownloadResult] | None: Rebuilt DownloadResults to use in logging and path extraction.
+        """
         results: list[DownloadResult] = []
         
         try:

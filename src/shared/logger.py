@@ -66,6 +66,8 @@ class FileFormatter(logging.Formatter):
         return f"{time} {level:<8} {name.upper():<10} {thread.upper():<15} {msg}"
 
 def load_logger():
+    """Loads the default logging configuration into the code.
+    """
     logger = logging.getLogger()
     logger.setLevel(logging.INFO)
     

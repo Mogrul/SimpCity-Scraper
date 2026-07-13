@@ -158,6 +158,8 @@ class SimpCity:
                 )
 
     def remove_empty_dirs(self):
+        """Removes empty directories in the output directory.
+        """
         deleted = 0
         
         for directory in sorted(

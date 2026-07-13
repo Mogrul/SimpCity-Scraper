@@ -8,7 +8,7 @@ import requests
 from requests.adapters import HTTPAdapter
 from bs4 import BeautifulSoup
 
-from .util import get_domain_name
+from .util import get_domain_name, resource_path
 from .models import DownloadResult, ExternalURL
 
 from src.shared.config import Config
@@ -41,7 +41,13 @@ class Web(requests.Session):
             cookie_path = ".cookies",
             domain_name = "simpcity.cr"
     ):
-        file_path = Path(cookie_path, f"{domain_name}.txt")
+        """Loads cookies into the request session using a domain name and path.
+
+        Args:
+            cookie_path (str, optional): Base path of the cookies folder. Defaults to ".cookies".
+            domain_name (str, optional): Name of the domain for the cookie file. Defaults to "simpcity.cr".
+        """
+        file_path = Path(resource_path(cookie_path), f"{domain_name}.txt")
         self.parsed_cookies.add(domain_name)
         
         if not file_path.exists():
@@ -55,6 +61,8 @@ class Web(requests.Session):
         self.cookies.update(jar)
   
     def load_adapter(self):
+        """Loads an adapter into the requests session for increased concurrect connections.
+        """
         adapter = HTTPAdapter(
             pool_connections=100,
             pool_maxsize=100
@@ -64,6 +72,8 @@ class Web(requests.Session):
         self.mount("https://", adapter)
     
     def load_headers(self):
+        """Loads the default headers into the requests session.
+        """
         self.headers.update({
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
                         "AppleWebKit/537.36 (KHTML, like Gecko) "
@@ -79,6 +89,17 @@ class Web(requests.Session):
             origin: str | None = None,
             load_cookies = True
     ) -> dict:
+        """Builds updated headers per-request derived from the default headers and loads cookies from domain.
+
+        Args:
+            url (str): URL of which the cookies are built from.
+            referer (str | None, optional): Referer URL used in the headers. Defaults to None.
+            origin (str | None, optional): Origin URL used in the headers. Defaults to None.
+            load_cookies (bool, optional): To load cookies from the given URL. Defaults to True.
+
+        Returns:
+            dict: The built header dictionary.
+        """
         domain_name = get_domain_name(url)
         
         if load_cookies:
@@ -102,6 +123,17 @@ class Web(requests.Session):
             referer: str | None = None,
             origin: str | None = None,
     ) -> dict | None:
+        """Sends a POST request through the requests session.
+
+        Args:
+            url (str): URL to send the POST request to.
+            payload (dict): Payload used in the POST request.
+            referer (str | None, optional): Referer URL used in the headers. Defaults to None.
+            origin (str | None, optional): Origin URL used in the headers. Defaults to None.
+
+        Returns:
+            dict | None: Dictionary of the returned POST request, None if failed.
+        """
         headers = self.build_headers(url, referer, origin)
         headers["Content-Type"] = "application/json"
         
@@ -131,6 +163,20 @@ class Web(requests.Session):
             return_headers = False,
             log = True
     ) -> BeautifulSoup | dict | dict | None:
+        """Builds and sends a GET request to the requests session.
+
+        Args:
+            url (str): URL to send the request to.
+            referer (str | None, optional): Referer URL to use in headers. Defaults to None.
+            origin (str | None, optional): Origin URL to use in headers. Defaults to None.
+            params (dict | None, optional): Params to send with request. Defaults to None.
+            return_dict (bool, optional): To return a dictionary from the GET request. Defaults to False.
+            return_headers (bool, optional): To return the response headers from the GET request. Defaults to False.
+            log (bool, optional): If logs should be printed of requests being sent. Defaults to True.
+
+        Returns:
+            BeautifulSoup | dict | dict | None: By default returns a BeatifulSoup object derived from the HTML response, dictionary if return_dict or dictionary of headers if return_headers
+        """
         headers = self.build_headers(url, referer, origin)
         
         reply = super().get(
@@ -165,6 +211,15 @@ class Web(requests.Session):
             url: str,
             referer: str
     ) -> dict | None:
+        """Uses a GET request to load cookies into the session.
+
+        Args:
+            url (str): URL to get the cookies from.
+            referer (str): Referer used in the headers.
+
+        Returns:
+            dict | None: Dictionary of headers which should include the cookies.
+        """
         domain_name = get_domain_name(url)
         parsed = urlparse(url)
         
@@ -213,6 +268,18 @@ class Web(requests.Session):
         origin: str | None = None,
         params: dict | None = None
     ) -> DownloadResult | None:
+        """Downloads an ExternalURL object to a destination.
+
+        Args:
+            url (ExternalURL): URL object to download the file from.
+            destination (Path): Destination of the file.
+            referer (str | None, optional): Referer URL used in the headers. Defaults to None.
+            origin (str | None, optional): Origin URL used in the headers. Defaults to None.
+            params (dict | None, optional): Parameters dictionary used in the request. Defaults to None.
+
+        Returns:
+            DownloadResult | None: DownloadResult object returned on completion.
+        """
         if destination.exists():
             return
         
