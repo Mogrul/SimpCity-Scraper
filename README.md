@@ -2,6 +2,14 @@
 A multi-threaded simpcity.cr thread multi-page scraping tool
 
 ## Usage
+### Executable (Recommended)
+- Download the executable from [Latest Release](https://github.com/Mogrul/SSDownloader/releases/latest)
+- Extract the files into a directory of your choosing.
+- Open a terminal from that directory
+- Login to SimpCity on a browser and extract the sites cookies using a tool like [addon](https://addons.mozilla.org/en-GB/firefox/addon/get-cookies-txt-locally/)
+- Name the file `simpcity.txt` and place it into a directory called `.cookies` of the root directory
+- Run `.\SimpScraper.exe URL` and it should download to the value set in `config.yaml`
+
 ### Source
 - Download the source using [github](https://github.com/Mogrul/SSDownloader/archive/refs/heads/main.zip) or `git clone https://github.com/Mogrul/SSDownloader`
 - Create a virtual python environment using `python -m venv .venv`
@@ -10,14 +18,6 @@ A multi-threaded simpcity.cr thread multi-page scraping tool
 - Login to SimpCity on a browser and extract the sites cookies using a tool like [addon](https://addons.mozilla.org/en-GB/firefox/addon/get-cookies-txt-locally/)
 - Name the file `simpcity.txt` and place it into a directory called `.cookies` of the root directory
 - Run the main.py URL and it should download to the value set in `config.yaml`
-
-### Executable (Recommended)
-- Download the executable from [Latest Release](https://github.com/Mogrul/SSDownloader/releases/latest)
-- Extract the files into a directory of your choosing.
-- Open a terminal from that directory
-- Login to SimpCity on a browser and extract the sites cookies using a tool like [addon](https://addons.mozilla.org/en-GB/firefox/addon/get-cookies-txt-locally/)
-- Name the file `simpcity.txt` and place it into a directory called `.cookies` of the root directory
-- Run `.\SimpScraper.exe URL` and it should download to the value set in `config.yaml`
 
 ## Supported sites
 - https://turbo.cr/
