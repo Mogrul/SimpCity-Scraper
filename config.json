@@ -6,6 +6,12 @@
             "Accept-Encoding": "gzip, deflate, br, zstd"
         },
         "workers": 10,
-        "timeout": 10
+        "timeout": 10,
+        "chunk_size": 1048576
+    },
+    
+    "scraper": {
+        "save_metadata": 0,
+        "download_location": "Downloads"
     }
 }

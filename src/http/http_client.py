@@ -2,6 +2,7 @@ import logging
 from pathlib import Path
 from http.cookiejar import MozillaCookieJar
 from urllib.parse import urlparse
+import time
 
 import requests
 from bs4 import BeautifulSoup
@@ -10,6 +11,8 @@ from src.shared.singleton_meta import SingletonMeta
 from src.shared.config import Config
 from .models.request import HttpRequest
 from .models.response import HttpResponse
+from .models.download_request import HttpDownloadRequest
+from .models.download_response import HttpDownloadResponse
 
 class HttpClient(metaclass = SingletonMeta):
     def __init__(self):
@@ -20,7 +23,7 @@ class HttpClient(metaclass = SingletonMeta):
         
         self._load_default_headers()
     
-    def _load_cookies(self, request: HttpRequest):
+    def _load_cookies(self, request: HttpRequest | HttpDownloadRequest):
         parsed = urlparse(request.url)
         domain = parsed.netloc
         
@@ -46,7 +49,7 @@ class HttpClient(metaclass = SingletonMeta):
         self._session.cookies.update(jar)
         self._notified_cookies.add(domain)
 
-    def _build_headers(self, request: HttpRequest) -> dict[str, str]:
+    def _build_headers(self, request: HttpRequest | HttpDownloadRequest) -> dict[str, str]:
         headers = {}
         
         if request.referer:
@@ -84,4 +87,63 @@ class HttpClient(metaclass = SingletonMeta):
                 BeautifulSoup(response.text, "html.parser") if request.as_soup
                 else None
             )
+        )
+    
+    def download(self, request: HttpDownloadRequest) -> HttpDownloadResponse:
+        if request.destination.exists():
+            return HttpDownloadResponse(
+                    request,
+                    success = False,
+                    is_duplicate = True
+            )
+        
+        self._load_cookies(request)
+        headers = self._build_headers(request)
+        
+        destination = request.destination
+        destination.parent.mkdir(parents = True, exist_ok = True)
+        temp_path = destination.with_suffix(destination.suffix + ".temp")
+        
+        downloaded = 0
+        if temp_path.exists():
+            downloaded = temp_path.stat().st_size
+        
+        if downloaded:
+            headers["Range"] = f"bytes={downloaded}"
+        
+        start_time = time.perf_counter()
+        with self._session.get(
+                url = request.url,
+                headers = headers,
+                timeout = self._config.timeout
+        ) as response:
+            # Rejected range request
+            if downloaded and response.status_code == 200:
+                downloaded = 0
+                temp_path.unlink()
+            
+            if response.status_code not in (200, 203):
+                return HttpDownloadResponse(
+                    request = request,
+                    success = False,
+                    status_code = response.status_code
+                )
+            
+            mode = "ab" if downloaded else "wb"
+            
+            with open(temp_path, mode) as file:
+                for chunk in response.iter_content(self._config.chunk_size):
+                    if chunk:
+                        file.write(chunk)
+        
+        # Successful download
+        temp_path.rename(destination)
+        time_taken = time.perf_counter() - start_time
+        
+        return HttpDownloadResponse(
+            request = request,
+            success = True,
+            status_code = 200,
+            size = destination.stat().st_size,
+            time_taken = time_taken
         )

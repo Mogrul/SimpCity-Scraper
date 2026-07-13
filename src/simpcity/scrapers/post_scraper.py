@@ -5,25 +5,32 @@ from bs4 import Tag
 
 from ..models.post import Post
 from .user_scraper import UserScraper
+from src.http.http_client import HttpClient
+from src.http.models.request import HttpRequest
+from src.shared.config import Config
 
 class PostScraper:
     def __init__(self):
         self._logger = logging.getLogger("scraper.post")
+        self._client = HttpClient()
+        self._config = Config()
     
     @classmethod
     def scrape(cls, url: str, tag: Tag) -> Post | None:
         scraper = cls()
-    
-        user_section = scraper._get_user_section(tag)
-        if not user_section:
-            scraper._logger.error(f"Failed to get user section for post!")
-            return
-        
-        user = UserScraper.scrape(user_section)
-        
-        if not user:
-            scraper._logger.error(f"Failed to scrape user from post!")
-            return
+
+        user = None
+        if scraper._config.save_metadata:
+            user_section = scraper._get_user_section(tag)
+            if not user_section:
+                scraper._logger.error(f"Failed to get user section for post!")
+                return
+            
+            user = UserScraper.scrape(user_section)
+            
+            if not user:
+                scraper._logger.error(f"Failed to scrape user from post!")
+                return
     
         posted_at = scraper._get_date(tag)
         if not posted_at:
@@ -37,12 +44,14 @@ class PostScraper:
         
         unpaged_url = scraper._get_unpaged_url(url)
         url = scraper._get_url(unpaged_url, id)
+        external_urls = scraper._get_external_urls(tag)
                 
         post = Post(
             url = url,
             id = id,
             user = user,
-            posted_at = posted_at
+            posted_at = posted_at,
+            external_urls = external_urls
         )
         
         return post
@@ -82,7 +91,72 @@ class PostScraper:
         return url.split("/page-")[0]
     
     def _get_external_urls(self, tag: Tag) -> list[str]:
-        pass
+        externals = tag.find_all("a", class_ = "link link--external")
+        
+        external_urls = []
+        for external in externals:
+            href = external["href"]
+            
+            if not isinstance(href, str): continue
+            
+            href = href.strip()
+            
+            if "/redirect/" in href:
+                href = self._get_redirect_url(href)
+            
+            elif (
+                "https://goonbox.cr" in href
+                and not "/album/" in href
+            ):
+                href = self._get_goonbox_url(external)
+            
+            if not href:
+                continue
+            
+            external_urls.append(href)
+        
+        return external_urls
     
     def _get_user_section(self, tag: Tag) -> Tag | None:
         return tag.find("section", class_ = "message-user")
+
+    def _get_redirect_url(self, href: str) -> str | None:
+        url = "https://simpcity.cr" + href
+        
+        page = self._client.get(HttpRequest(
+            url = url,
+            referer = "https://simpcity.cr"
+        ))
+        
+        if (
+            page.status_code != 200
+            or not page.soup
+        ):
+            return None
+        
+        target_link_el = page.soup.find("a", class_ = "simpLinkProxy-targetLink")
+        
+        if not target_link_el:
+            return None
+        
+        target_link = target_link_el["href"]
+        
+        if not target_link or not isinstance(target_link, str):
+            return None
+        
+        return target_link
+    
+    def _get_goonbox_url(self, tag: Tag) -> str | None:
+        img = tag.find("img")
+        
+        if not img: return None
+        
+        src = img.get("src")
+        
+        if (
+            not src
+            or not isinstance(src, str)
+        ):
+            return None
+        
+        return src.replace(".md", "")

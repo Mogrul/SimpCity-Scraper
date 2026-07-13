@@ -7,6 +7,6 @@ from .user import User
 class Post:
     url: str
     id: int
-    user: User
     posted_at: datetime
+    user: User | None = None
     external_urls: list[str] = field(default_factory = list)
