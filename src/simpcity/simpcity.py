@@ -25,6 +25,8 @@ class SimpCity:
         self._scrape_thread(thread)
 
     def _scrape_thread(self, thread: Thread):
+        download_counters: dict[str, int] = defaultdict(int) # domain: download_count
+        
         for page in thread.pages:
             page_map: dict[str, list[ExternalScraperData]] = defaultdict(list)
             
@@ -37,6 +39,13 @@ class SimpCity:
                     if "cuckcapital" in domain:
                         domain = "goonbox.cr"
                     
+                    # Skip unsupported
+                    if domain not in EXTERNAL_SCRAPERS:
+                        if domain not in self._notified_unsupported:
+                            self._logger.warning(f"Unsupported domain: {domain}")
+                            self._notified_unsupported.add(domain)
+                        continue
+                    
                     page_map[domain].append(ExternalScraperData(
                         domain = domain,
                         username = thread.username,
@@ -47,12 +56,6 @@ class SimpCity:
                 
             # Pass maps to external scrapers.
             for domain in page_map.keys():
-                if domain not in EXTERNAL_SCRAPERS:
-                    if not domain in self._notified_unsupported:
-                        self._logger.warning(f"Unsupported domain: {domain}")
-                        self._notified_unsupported.add(domain)
-                        continue
-                
                 external_scraper = EXTERNAL_SCRAPERS.get(domain)
                 
                 if not external_scraper:
@@ -61,5 +64,11 @@ class SimpCity:
                 
                 scraper_datas = page_map[domain]
                 external_scraper = external_scraper(scraper_datas)
-                external_scraper.scrape()
+                download_count = external_scraper.scrape()
+                
+                download_counters[domain] += download_count
+        
+        for domain, download_count in download_counters.items():
+            self._logger.info(f"{download_count:^5,} files downloaded from {domain}")
+                
                 

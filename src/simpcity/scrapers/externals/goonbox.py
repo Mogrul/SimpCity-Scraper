@@ -1,5 +1,7 @@
 import logging
 
+from src.http.models.download_response import HttpDownloadResponse
+
 from .external_scraper import ExternalScraper
 from src.simpcity.models.external_scraper_data import ExternalScraperData
 
@@ -7,24 +9,21 @@ class GoonBox(ExternalScraper):
     def __init__(self, *args, **kwargs):
         super().__init__(
             logger = logging.getLogger("external.goonbox"),
+            thread_prefix = "goonbox.thread",
             *args,
             **kwargs
         )
     
-    def scrape(self):
-        super().scrape()
+    def on_scrape(self, data: ExternalScraperData) -> HttpDownloadResponse | None:
+        super().on_scrape(data)
         
-        for data in self._datas:            
-            if "/album/" in data.url:
-                self._handle_album(data)
-            
-            elif "/images" in data.url:
-                self._handle_file(data)
+        if "/album/" in data.url:
+            self._logger.warning(f"GoonBox albums currently not supported!")
+        
+        elif "/images" in data.url:
+            return self._handle_file(data)
     
-    def _handle_album(self, data: ExternalScraperData):
-        pass
-    
-    def _handle_file(self, data: ExternalScraperData):
-        response = self.download(data)
+    def _handle_file(self, data: ExternalScraperData) -> HttpDownloadResponse:
+        return self.download(data)
         
         

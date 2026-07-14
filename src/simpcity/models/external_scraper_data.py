@@ -7,4 +7,5 @@ class ExternalScraperData:
     username: str
     url: str
     posted_at: datetime
+    file_name: str | None = None
     tags: list[str] = field(default_factory = list)

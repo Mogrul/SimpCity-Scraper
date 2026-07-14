@@ -31,7 +31,7 @@ if __name__ == "__main__":
     success = c.load_json()
     
     if not success:
-        logger.critical("Failed to read config, exitting...")
+        logger.critical("Failed to read config, exiting...")
         os._exit(0)
     
     ss = SimpCity()

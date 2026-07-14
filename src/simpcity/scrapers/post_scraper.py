@@ -1,7 +1,7 @@
 import logging
 from datetime import datetime, timezone
 
-from bs4 import Tag
+from bs4 import Tag, BeautifulSoup
 
 from ..models.post import Post
 from .user_scraper import UserScraper
@@ -91,9 +91,10 @@ class PostScraper:
         return url.split("/page-")[0]
     
     def _get_external_urls(self, tag: Tag) -> list[str]:
-        externals = tag.find_all("a", class_ = "link link--external")
-        
         external_urls = []
+        
+        # Search classes with link--external
+        externals = tag.find_all("a", class_ = "link link--external")
         for external in externals:
             href = external["href"]
             
@@ -115,6 +116,15 @@ class PostScraper:
             
             external_urls.append(href)
         
+        # Search IFrames for embedded stuff
+        iframes = tag.find_all("iframe", class_ = "saint-iframe")
+        for iframe in iframes:
+            src = iframe.get("src")
+            
+            if not src: continue
+            
+            external_urls.append(src)
+        
         return external_urls
     
     def _get_user_section(self, tag: Tag) -> Tag | None:
@@ -123,18 +133,18 @@ class PostScraper:
     def _get_redirect_url(self, href: str) -> str | None:
         url = "https://simpcity.cr" + href
         
-        page = self._client.get(HttpRequest(
+        response = self._client.get(HttpRequest(
             url = url,
             referer = "https://simpcity.cr"
         ))
         
         if (
-            page.status_code != 200
-            or not page.soup
+            response.status_code != 200
+            or not isinstance(response.data, BeautifulSoup)
         ):
             return None
         
-        target_link_el = page.soup.find("a", class_ = "simpLinkProxy-targetLink")
+        target_link_el = response.data.find("a", class_ = "simpLinkProxy-targetLink")
         
         if not target_link_el:
             return None

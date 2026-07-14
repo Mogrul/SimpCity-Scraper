@@ -3,6 +3,7 @@ from pathlib import Path
 from http.cookiejar import MozillaCookieJar
 from urllib.parse import urlparse
 import time
+import json
 
 import requests
 from bs4 import BeautifulSoup
@@ -79,14 +80,35 @@ class HttpClient(metaclass = SingletonMeta):
         
         self._logger.info(f"{response.status_code}: Sent GET request to {request.url}")
         
+        if request.as_soup:
+            return HttpResponse(
+                request = request,
+                status_code = response.status_code,
+                headers = dict(response.headers),
+                data = (
+                    BeautifulSoup(response.text, "html.parser")
+                )
+            )
+        
+        elif request.as_dict:
+            try:
+                data = json.loads(response.text)
+            
+                return HttpResponse(
+                    request = request,
+                    status_code = response.status_code,
+                    headers = dict(response.headers),
+                    data = data
+                )
+            
+            except json.JSONDecodeError:
+                pass
+        
         return HttpResponse(
             request = request,
             status_code = response.status_code,
             headers = dict(response.headers),
-            soup = (
-                BeautifulSoup(response.text, "html.parser") if request.as_soup
-                else None
-            )
+            data = response.text
         )
     
     def download(self, request: HttpDownloadRequest) -> HttpDownloadResponse:

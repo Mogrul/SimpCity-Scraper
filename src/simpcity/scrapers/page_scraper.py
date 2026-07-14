@@ -14,7 +14,7 @@ class PageScraper:
     def scrape(cls, response: HttpResponse) -> Page | None:
         if (
             response.status_code != 200
-            or not response.soup
+            or not isinstance(response.data, BeautifulSoup)
         ):
             return
         
@@ -26,7 +26,7 @@ class PageScraper:
             page_num = scraper._get_page_num(url)
         )
         
-        post_tags = scraper._get_post_blocks(response.soup)  
+        post_tags = scraper._get_post_blocks(response.data)  
         if not post_tags:
             scraper._logger.error(f"Failed to get post tags in {url}")
             return

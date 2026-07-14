@@ -20,13 +20,13 @@ class ThreadScraper:
         response = scraper._get_page(url, 1)
         if (
             not response.status_code == 200
-            or not response.soup
+            or not isinstance(response.data, BeautifulSoup)
         ):
             scraper._logger.error(f"Failed to get soup from {url}")
             return
         
-        username = scraper._get_username(response.soup)
-        tags = scraper._get_tags(response.soup)
+        username = scraper._get_username(response.data)
+        tags = scraper._get_tags(response.data)
         
         if not username:
             scraper._logger.error(f"Failed to retreive username from {url}")
@@ -38,13 +38,13 @@ class ThreadScraper:
             tags = tags
         )
         
-        max_page_num = scraper._get_max_page_num(response.soup)
+        max_page_num = scraper._get_max_page_num(response.data)
         for page_num in range(1, max_page_num + 1):
             if page_num != 1:
                 response = scraper._get_page(url, page_num)
                 if (
                     not response.status_code == 200
-                    or not response.soup
+                    or not response.data
                 ):
                     scraper._logger.error(f"Failed to get soup from page: {response.request.url}")
                     return
