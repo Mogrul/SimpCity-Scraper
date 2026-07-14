@@ -14,7 +14,10 @@ class GoonBox(ExternalScraper):
             **kwargs
         )
     
-    def on_scrape(self, data: ExternalScraperData) -> HttpDownloadResponse | None:
+    def on_scrape(
+            self,
+            data: ExternalScraperData
+    ) -> tuple[HttpDownloadResponse] | None:
         super().on_scrape(data)
         
         if "/album/" in data.url:
@@ -23,7 +26,10 @@ class GoonBox(ExternalScraper):
         elif "/images" in data.url:
             return self._handle_file(data)
     
-    def _handle_file(self, data: ExternalScraperData) -> HttpDownloadResponse:
-        return self.download(data)
+    def _handle_file(
+            self,
+            data: ExternalScraperData
+    ) -> tuple[HttpDownloadResponse] | None:
+        return (self.download(data),)
         
         

@@ -41,38 +41,46 @@ class ExternalScraper:
             
             for future in as_completed(futures):
                 try:
-                    result = future.result()
+                    responses = future.result()
                 
                 except Exception as e:
                     self._logger.exception(f"Error on scrape: {e}")
                     continue
                 
-                if not result: continue
-                response = result
+                if not responses:
+                    failed += 1
+                    total += 1
+                    continue
                 
-                if response.success is True:
-                    size = 0 if not response.size else response.size
-                    time_taken = .0 if not response.time_taken else response.time_taken
-                    
-                    self._logger.info(
-                        f"{self._format_bytes(size):>10} "
-                        f"{self._format_duration(time_taken):^8} "
-                        f"      Downloaded {response.request.destination}"
-                    )
-                    
-                    downloaded += 1
-                    
-                else:
-                    if not response.is_duplicate:
-                        self._logger.warning(
-                            f"{response.status_code}: Failed to download {response.request.url}"
+                if not isinstance(responses, tuple):
+                    failed += 1
+                    total += 1
+                    continue
+                
+                for response in responses:
+                    if response.success is True:
+                        size = 0 if not response.size else response.size
+                        time_taken = .0 if not response.time_taken else response.time_taken
+                        
+                        self._logger.info(
+                            f"{self._format_bytes(size):>10} "
+                            f"{self._format_duration(time_taken):^8} "
+                            f"      Downloaded {response.request.destination}"
                         )
-                        failed += 1
-                    
+                        
+                        downloaded += 1
+                        
                     else:
-                        exists += 1
-                
-                total += 1
+                        if not response.is_duplicate:
+                            self._logger.warning(
+                                f"{response.status_code}: Failed to download {response.request.url}"
+                            )
+                            failed += 1
+                        
+                        else:
+                            exists += 1
+                    
+                    total += 1
                 
         return (
             downloaded,
@@ -81,7 +89,10 @@ class ExternalScraper:
             exists
         )
     
-    def on_scrape(self, data: ExternalScraperData) -> HttpDownloadResponse | None:
+    def on_scrape(
+        self,
+        data: ExternalScraperData
+    ) -> tuple[HttpDownloadResponse] | None:
         pass
     
     def download(self, data: ExternalScraperData) -> HttpDownloadResponse:
@@ -91,6 +102,18 @@ class ExternalScraper:
             url = data.url,
             destination = file_path
         ))
+    
+    def _handle_album(
+            self,
+            data: ExternalScraperData
+    ) -> tuple[HttpDownloadResponse] | None:
+        return None
+    
+    def _handle_file(
+            self,
+            data: ExternalScraperData
+    ) -> tuple[HttpDownloadResponse] | None:
+        return None
     
     def _get_file_path(self, data: ExternalScraperData):
         url = data.url.split("/")[-1]

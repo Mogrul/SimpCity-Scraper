@@ -19,13 +19,19 @@ class Turbo(ExternalScraper):
             **kwargs
         )
     
-    def on_scrape(self, data: ExternalScraperData) -> HttpDownloadResponse | None:
+    def on_scrape(
+            self,
+            data: ExternalScraperData
+    ) -> tuple[HttpDownloadResponse] | None:
         super().on_scrape(data)
         
         if "/embed/" in data.url:
             return self._handle_embed(data)
     
-    def _handle_embed(self, data: ExternalScraperData) -> HttpDownloadResponse | None:
+    def _handle_embed(
+            self,
+            data: ExternalScraperData
+    ) -> tuple[HttpDownloadResponse] | None:
         id = data.url.split("/")[-1]
         api_url = Signing.TURBO + id
         
@@ -46,4 +52,4 @@ class Turbo(ExternalScraper):
         data.url = url
         data.file_name = file_name
         
-        return self.download(data)
+        return (self.download(data),)

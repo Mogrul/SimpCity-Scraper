@@ -8,13 +8,12 @@ import json
 import requests
 from bs4 import BeautifulSoup
 
-from src.shared.singleton_meta import SingletonMeta
-from src.shared.config import Config
+from src.shared import SingletonMeta, Config
 from .enums import ResponseType
-from .models.request import HttpRequest
-from .models.response import HttpResponse
-from .models.download_request import HttpDownloadRequest
-from .models.download_response import HttpDownloadResponse
+from .models import (
+    HttpRequest, HttpResponse,
+    HttpDownloadRequest, HttpDownloadResponse
+)
 
 class HttpClient(metaclass = SingletonMeta):
     def __init__(self):
