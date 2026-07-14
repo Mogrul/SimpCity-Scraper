@@ -2,6 +2,7 @@ import logging
 from pathlib import Path
 from uuid import uuid5, NAMESPACE_URL
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from urllib.parse import urlparse
 
 from src.simpcity.models.external_scraper_data import ExternalScraperData
 from src.http.models import (
@@ -92,21 +93,23 @@ class ExternalScraper:
     def on_scrape(
         self,
         data: ExternalScraperData
-    ) -> tuple[HttpDownloadResponse] | None:
+    ) -> tuple[HttpDownloadResponse, ...] | None:
         pass
     
     def download(self, data: ExternalScraperData) -> HttpDownloadResponse:
         file_path = self._get_file_path(data)
-
+        parsed = urlparse(data.url)
+        
         return self._client.download(HttpDownloadRequest(
             url = data.url,
-            destination = file_path
+            destination = file_path,
+            host = parsed.netloc
         ))
     
     def _handle_album(
             self,
             data: ExternalScraperData
-    ) -> tuple[HttpDownloadResponse] | None:
+    ) -> tuple[HttpDownloadResponse, ...] | None:
         return None
     
     def _handle_file(
@@ -120,15 +123,7 @@ class ExternalScraper:
         
         if "?" in data.url:
             url = url.split("?")[0]
-        
-        if data.file_name:
-            id = str(uuid5(NAMESPACE_URL, url + data.file_name))
-            ext_name = Path(data.file_name)
-        
-        else:
-            id = str(uuid5(NAMESPACE_URL, url))
-            ext_name = Path(url)
-        
+
         if data.file_name:
             ext_name = Path(data.file_name)
             file_id = str(
@@ -155,7 +150,7 @@ class ExternalScraper:
                 f"{data.posted_at.month:02d}-"
                 f"{data.posted_at.day:02d}"
                 "] "
-                f"{id}"
+                f"{file_id}"
                 f"{ext_name.suffix}"
             )
         ) # Downloads/OnlyFans/InsaneBirkin/2026/04/[2026-04-21] 821jddh.jpg

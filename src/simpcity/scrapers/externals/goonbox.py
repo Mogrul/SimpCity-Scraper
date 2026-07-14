@@ -17,7 +17,7 @@ class GoonBox(ExternalScraper):
     def on_scrape(
             self,
             data: ExternalScraperData
-    ) -> tuple[HttpDownloadResponse] | None:
+    ) -> tuple[HttpDownloadResponse, ...] | None:
         super().on_scrape(data)
         
         if "/album/" in data.url:

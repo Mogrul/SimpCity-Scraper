@@ -1,10 +1,9 @@
 from dataclasses import dataclass
-from pathlib import Path
 
 @dataclass
-class HttpDownloadRequest:
+class HttpPostRequest:
     url: str
-    destination: Path
+    payload: dict
     referer: str | None = None
     origin: str | None = None
     host: str | None = None

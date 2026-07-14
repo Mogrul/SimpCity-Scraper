@@ -4,14 +4,14 @@ from bs4 import BeautifulSoup, Tag
 
 from ..models import Page
 from .post_scraper import PostScraper
-from src.http.models import HttpResponse
+from src.http.models import HttpGetResponse
 
 class PageScraper:
     def __init__(self):
         self._logger = logging.getLogger("scraper.page")
     
     @classmethod
-    def scrape(cls, response: HttpResponse) -> Page | None:
+    def scrape(cls, response: HttpGetResponse) -> Page | None:
         if (
             response.status_code != 200
             or not isinstance(response.data, BeautifulSoup)

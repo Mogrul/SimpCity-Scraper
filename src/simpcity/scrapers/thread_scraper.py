@@ -8,8 +8,8 @@ from src.http.enums import ResponseType
 from src.http.http_client import HttpClient
 
 from src.http.models import (
-    HttpRequest,
-    HttpResponse
+    HttpGetRequest,
+    HttpGetResponse
 )
 
 class ThreadScraper:
@@ -63,10 +63,10 @@ class ThreadScraper:
         
         return thread
     
-    def _get_page(self, url: str, page_num: int) -> HttpResponse:
+    def _get_page(self, url: str, page_num: int) -> HttpGetResponse:
         url = url + f"/page-{page_num}"
         
-        return self._client.get(HttpRequest(
+        return self._client.get(HttpGetRequest(
             url = url,
             referer = "https://simpcity.cr"
         ), ResponseType.SOUP)

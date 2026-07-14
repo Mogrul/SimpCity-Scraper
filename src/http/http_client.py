@@ -10,10 +10,7 @@ from bs4 import BeautifulSoup
 
 from src.shared import SingletonMeta, Config
 from .enums import ResponseType
-from .models import (
-    HttpRequest, HttpResponse,
-    HttpDownloadRequest, HttpDownloadResponse
-)
+from .models import *
 
 class HttpClient(metaclass = SingletonMeta):
     def __init__(self):
@@ -24,7 +21,10 @@ class HttpClient(metaclass = SingletonMeta):
         
         self._load_default_headers()
     
-    def _load_cookies(self, request: HttpRequest | HttpDownloadRequest):
+    def _load_cookies(
+            self,
+            request: HttpGetRequest | HttpDownloadRequest | HttpPostRequest
+    ):
         parsed = urlparse(request.url)
         domain = parsed.netloc
         
@@ -50,7 +50,10 @@ class HttpClient(metaclass = SingletonMeta):
         self._session.cookies.update(jar)
         self._notified_cookies.add(domain)
 
-    def _build_headers(self, request: HttpRequest | HttpDownloadRequest) -> dict[str, str]:
+    def _build_headers(
+            self,
+            request: HttpGetRequest | HttpDownloadRequest | HttpPostRequest
+    ) -> dict[str, str]:
         headers = {}
         
         if request.referer:
@@ -58,6 +61,9 @@ class HttpClient(metaclass = SingletonMeta):
         
         if request.origin:
             headers["Origin"] = request.origin
+        
+        if request.host:
+            headers["Host"] = request.host
         
         return headers
     
@@ -68,20 +74,27 @@ class HttpClient(metaclass = SingletonMeta):
         
         self._session.headers.update(headers)
 
-    def get(self, request: HttpRequest, response_type: ResponseType) -> HttpResponse:
+    def get(self, request: HttpGetRequest, response_type: ResponseType) -> HttpGetResponse:
         self._load_cookies(request)
         headers = self._build_headers(request)
         
-        response = self._session.get(
-            url = request.url,
-            headers = headers,
-            timeout = self._config.timeout
-        )
+        try:
+            response = self._session.get(
+                url = request.url,
+                headers = headers,
+                timeout = self._config.timeout
+            )
+            
+        except TimeoutError:
+            return HttpGetResponse(
+                request = request,
+                status_code = 408 
+            )
         
         self._logger.info(f"{response.status_code}: Sent GET request to {request.url}")
         
         if response_type == ResponseType.SOUP:
-            return HttpResponse(
+            return HttpGetResponse(
                 request = request,
                 status_code = response.status_code,
                 headers = dict(response.headers),
@@ -94,7 +107,7 @@ class HttpClient(metaclass = SingletonMeta):
             try:
                 data = json.loads(response.text)
             
-                return HttpResponse(
+                return HttpGetResponse(
                     request = request,
                     status_code = response.status_code,
                     headers = dict(response.headers),
@@ -104,11 +117,47 @@ class HttpClient(metaclass = SingletonMeta):
             except json.JSONDecodeError:
                 pass
         
-        return HttpResponse(
+        return HttpGetResponse(
             request = request,
             status_code = response.status_code,
             headers = dict(response.headers),
             data = response.text
+        )
+    
+    def post(self, request: HttpPostRequest) -> HttpPostResponse:
+        self._load_cookies(request)
+        headers = self._build_headers(request)
+        headers["Content-Type"] = "application/json"
+        
+        try:
+            response = self._session.post(
+                url = request.url,
+                json = request.payload,
+                headers = headers,
+                timeout = self._config.timeout
+            )
+        
+        except TimeoutError:
+            return HttpPostResponse(
+                request = request,
+                status_code = 408,
+                headers = headers
+            )
+        
+        self._logger.info(f"{response.status_code}: Sent POST request to {request.url}")
+        
+        data = None
+        try:
+            data = response.json()
+        
+        except json.JSONDecodeError:
+            pass
+        
+        return HttpPostResponse(
+            request = request,
+            data = data,
+            status_code = response.status_code,
+            headers = dict(response.headers)
         )
     
     def download(self, request: HttpDownloadRequest) -> HttpDownloadResponse:

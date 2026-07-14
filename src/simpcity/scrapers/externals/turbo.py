@@ -2,7 +2,7 @@ import logging
 
 from src.http.models import (
     HttpDownloadResponse,
-    HttpRequest
+    HttpGetRequest
 )
 from src.http.enums import ResponseType
 
@@ -22,7 +22,7 @@ class Turbo(ExternalScraper):
     def on_scrape(
             self,
             data: ExternalScraperData
-    ) -> tuple[HttpDownloadResponse] | None:
+    ) -> tuple[HttpDownloadResponse, ...] | None:
         super().on_scrape(data)
         
         if "/embed/" in data.url:
@@ -35,7 +35,7 @@ class Turbo(ExternalScraper):
         id = data.url.split("/")[-1]
         api_url = Signing.TURBO + id
         
-        response = self._client.get(HttpRequest(
+        response = self._client.get(HttpGetRequest(
             url = api_url,
             referer = data.url
         ), ResponseType.DICT)

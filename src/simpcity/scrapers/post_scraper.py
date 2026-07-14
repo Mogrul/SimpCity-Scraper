@@ -7,7 +7,7 @@ from ..models import Post
 from .user_scraper import UserScraper
 from src.http.enums import ResponseType
 from src.http.http_client import HttpClient
-from src.http.models import HttpRequest
+from src.http.models import HttpGetRequest
 from src.shared.config import Config
 
 class PostScraper:
@@ -134,7 +134,7 @@ class PostScraper:
     def _get_redirect_url(self, href: str) -> str | None:
         url = "https://simpcity.cr" + href
         
-        response = self._client.get(HttpRequest(
+        response = self._client.get(HttpGetRequest(
             url = url,
             referer = "https://simpcity.cr"
         ), ResponseType.SOUP)
