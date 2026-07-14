@@ -10,6 +10,7 @@ from bs4 import BeautifulSoup
 
 from src.shared.singleton_meta import SingletonMeta
 from src.shared.config import Config
+from .enums import ResponseType
 from .models.request import HttpRequest
 from .models.response import HttpResponse
 from .models.download_request import HttpDownloadRequest
@@ -68,7 +69,7 @@ class HttpClient(metaclass = SingletonMeta):
         
         self._session.headers.update(headers)
 
-    def get(self, request: HttpRequest) -> HttpResponse:
+    def get(self, request: HttpRequest, response_type: ResponseType) -> HttpResponse:
         self._load_cookies(request)
         headers = self._build_headers(request)
         
@@ -80,7 +81,7 @@ class HttpClient(metaclass = SingletonMeta):
         
         self._logger.info(f"{response.status_code}: Sent GET request to {request.url}")
         
-        if request.as_soup:
+        if response_type == ResponseType.SOUP:
             return HttpResponse(
                 request = request,
                 status_code = response.status_code,
@@ -90,7 +91,7 @@ class HttpClient(metaclass = SingletonMeta):
                 )
             )
         
-        elif request.as_dict:
+        elif response_type == ResponseType.DICT:
             try:
                 data = json.loads(response.text)
             
@@ -114,9 +115,9 @@ class HttpClient(metaclass = SingletonMeta):
     def download(self, request: HttpDownloadRequest) -> HttpDownloadResponse:
         if request.destination.exists():
             return HttpDownloadResponse(
-                    request,
-                    success = False,
-                    is_duplicate = True
+                request,
+                success = False,
+                is_duplicate = True
             )
         
         self._load_cookies(request)

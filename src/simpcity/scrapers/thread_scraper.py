@@ -3,10 +3,14 @@ import logging
 from bs4 import BeautifulSoup
 
 from .page_scraper import PageScraper
-from ..models.thread import Thread
+from ..models import Thread
+from src.http.enums import ResponseType
 from src.http.http_client import HttpClient
-from src.http.models.request import HttpRequest
-from src.http.models.response import HttpResponse
+
+from src.http.models import (
+    HttpRequest,
+    HttpResponse
+)
 
 class ThreadScraper:
     def __init__(self):
@@ -65,7 +69,7 @@ class ThreadScraper:
         return self._client.get(HttpRequest(
             url = url,
             referer = "https://simpcity.cr"
-        ))
+        ), ResponseType.SOUP)
     
     def _get_max_page_num(self, soup: BeautifulSoup) -> int:
         page_nav_main = soup.find("ul", class_ = "pageNav-main")

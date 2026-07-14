@@ -3,10 +3,11 @@ from datetime import datetime, timezone
 
 from bs4 import Tag, BeautifulSoup
 
-from ..models.post import Post
+from ..models import Post
 from .user_scraper import UserScraper
+from src.http.enums import ResponseType
 from src.http.http_client import HttpClient
-from src.http.models.request import HttpRequest
+from src.http.models import HttpRequest
 from src.shared.config import Config
 
 class PostScraper:
@@ -136,7 +137,7 @@ class PostScraper:
         response = self._client.get(HttpRequest(
             url = url,
             referer = "https://simpcity.cr"
-        ))
+        ), ResponseType.SOUP)
         
         if (
             response.status_code != 200

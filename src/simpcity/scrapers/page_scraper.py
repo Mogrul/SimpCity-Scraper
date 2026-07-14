@@ -2,9 +2,9 @@ import logging
 
 from bs4 import BeautifulSoup, Tag
 
-from ..models.page import Page
+from ..models import Page
 from .post_scraper import PostScraper
-from src.http.models.response import HttpResponse
+from src.http.models import HttpResponse
 
 class PageScraper:
     def __init__(self):

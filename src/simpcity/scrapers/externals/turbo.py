@@ -1,7 +1,10 @@
 import logging
 
-from src.http.models.download_response import HttpDownloadResponse
-from src.http.models.request import HttpRequest
+from src.http.models import (
+    HttpDownloadResponse,
+    HttpRequest
+)
+from src.http.enums import ResponseType
 
 from .external_scraper import ExternalScraper
 from src.simpcity.models.external_scraper_data import ExternalScraperData
@@ -28,15 +31,13 @@ class Turbo(ExternalScraper):
         
         response = self._client.get(HttpRequest(
             url = api_url,
-            referer = data.url,
-            as_dict = True,
-            as_soup = False
-        ))
+            referer = data.url
+        ), ResponseType.DICT)
         
         if not isinstance(response.data, dict):
             return None
         
-        file_name = response.data.get("filename")
+        file_name = response.data.get("original_filename")
         url = response.data.get("url")
         
         if not file_name or not url:

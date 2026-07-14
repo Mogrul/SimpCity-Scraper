@@ -1,9 +1,9 @@
 import logging
 
-from src.http.models.download_response import HttpDownloadResponse
+from src.http.models import HttpDownloadResponse
 
 from .external_scraper import ExternalScraper
-from src.simpcity.models.external_scraper_data import ExternalScraperData
+from src.simpcity.models import ExternalScraperData
 
 class GoonBox(ExternalScraper):
     def __init__(self, *args, **kwargs):

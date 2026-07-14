@@ -2,9 +2,8 @@ import logging
 from collections import defaultdict
 from urllib.parse import urlparse
 
-from .scrapers.thread_scraper import ThreadScraper
-from .models.external_scraper_data import ExternalScraperData
-from .models.thread import Thread
+from .scrapers import ThreadScraper
+from .models import ExternalScraperData, Thread
 from .scrapers.externals import EXTERNAL_SCRAPERS
 
 class SimpCity:
@@ -25,7 +24,9 @@ class SimpCity:
         self._scrape_thread(thread)
 
     def _scrape_thread(self, thread: Thread):
-        download_counters: dict[str, int] = defaultdict(int) # domain: download_count
+        download_counters: dict[str, dict[str, int]] = defaultdict(
+            lambda: defaultdict(int)
+        )
         
         for page in thread.pages:
             page_map: dict[str, list[ExternalScraperData]] = defaultdict(list)
@@ -64,11 +65,28 @@ class SimpCity:
                 
                 scraper_datas = page_map[domain]
                 external_scraper = external_scraper(scraper_datas)
-                download_count = external_scraper.scrape()
+                (
+                    downloaded,
+                    failed,
+                    total,
+                    exists
+                ) = external_scraper.scrape()
                 
-                download_counters[domain] += download_count
+                download_counters[domain]["downloaded"] += downloaded
+                download_counters[domain]["failed"] += failed
+                download_counters[domain]["total"] += total
+                download_counters[domain]["exists"] += exists
         
-        for domain, download_count in download_counters.items():
-            self._logger.info(f"{download_count:^5,} files downloaded from {domain}")
-                
-                
+        for domain, values in download_counters.items():
+            downloaded = values["downloaded"]
+            failed = values["failed"]
+            total = values["total"]
+            exists = values["exists"]
+            
+            self._logger.info(
+                "\n"
+                f"{domain}\n"
+                f"      {'Downloaded:':<12}{f'{downloaded}/{total}':>10}\n"
+                f"      {'Exists:':<12}{f'{exists}/{total}':>10}\n"
+                f"      {'Failed:':<12}{f'{failed}/{total}':>10}"
+            )

@@ -2,8 +2,7 @@ import os
 import logging
 from pathlib import Path
 
-from src.shared.logger import load_logger
-from src.shared.config import Config
+from src.shared import load_logger, Config
 from src.simpcity.simpcity import SimpCity
 
 def check_paths():

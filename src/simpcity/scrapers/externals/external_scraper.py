@@ -4,10 +4,12 @@ from uuid import uuid5, NAMESPACE_URL
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from src.simpcity.models.external_scraper_data import ExternalScraperData
-from src.http.models.download_request import HttpDownloadRequest
-from src.http.models.download_response import HttpDownloadResponse
+from src.http.models import (
+    HttpDownloadResponse,
+    HttpDownloadRequest
+)
 from src.http.http_client import HttpClient
-from src.shared.config import Config
+from src.shared import Config
 
 class ExternalScraper:
     def __init__(
@@ -22,8 +24,11 @@ class ExternalScraper:
         self._config = Config()
         self._client = HttpClient()
     
-    def scrape(self) -> int:
-        complete_count = 0
+    def scrape(self) -> tuple[int, int, int, int]:
+        downloaded = 0
+        failed = 0
+        total = 0
+        exists = 0
         
         with ThreadPoolExecutor(
                 max_workers = self._config.workers,
@@ -55,15 +60,26 @@ class ExternalScraper:
                         f"      Downloaded {response.request.destination}"
                     )
                     
+                    downloaded += 1
+                    
                 else:
                     if not response.is_duplicate:
                         self._logger.warning(
                             f"{response.status_code}: Failed to download {response.request.url}"
                         )
+                        failed += 1
+                    
+                    else:
+                        exists += 1
                 
-                complete_count += 1
-        
-        return complete_count
+                total += 1
+                
+        return (
+            downloaded,
+            failed,
+            total,
+            exists
+        )
     
     def on_scrape(self, data: ExternalScraperData) -> HttpDownloadResponse | None:
         pass
@@ -77,6 +93,19 @@ class ExternalScraper:
         ))
     
     def _get_file_path(self, data: ExternalScraperData):
+        url = data.url.split("/")[-1]
+        
+        if "?" in data.url:
+            url = url.split("?")[0]
+        
+        if data.file_name:
+            id = str(uuid5(NAMESPACE_URL, url + data.file_name))
+            ext_name = Path(data.file_name)
+        
+        else:
+            id = str(uuid5(NAMESPACE_URL, url))
+            ext_name = Path(url)
+        
         if data.file_name:
             ext_name = Path(data.file_name)
             file_id = str(
@@ -103,7 +132,7 @@ class ExternalScraper:
                 f"{data.posted_at.month:02d}-"
                 f"{data.posted_at.day:02d}"
                 "] "
-                f"{file_id}"
+                f"{id}"
                 f"{ext_name.suffix}"
             )
         ) # Downloads/OnlyFans/InsaneBirkin/2026/04/[2026-04-21] 821jddh.jpg

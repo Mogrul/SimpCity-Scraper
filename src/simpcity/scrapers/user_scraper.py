@@ -3,7 +3,7 @@ from datetime import datetime
 
 from bs4 import Tag
 
-from ..models.user import User
+from ..models import User
 
 class UserScraper:
     def __init__(self):
