@@ -2,16 +2,18 @@ from pathlib import Path
 import json
 import logging
 
-from src.shared.singleton_meta import SingletonMeta
+from .singleton_meta import SingletonMeta
+from .args import get_args
 
 class Config(metaclass = SingletonMeta):
     def __init__(self):
         self._logger = logging.getLogger(__name__)
+        self._args = get_args()
         
     def exists(self, json_path = Path("config.json")) -> bool:
         return json_path.exists()
     
-    def load_json(self, json_path = Path("config.json")):
+    def load(self, json_path = Path("config.json")):
         if not json_path.exists():
             return False
         
@@ -33,12 +35,16 @@ class Config(metaclass = SingletonMeta):
         self.workers = network.get("workers")
         self.timeout = network.get("timeout")
         self.chunk_size = network.get("chunk_size")
+        self.cookie_path = Path(network.get("cookie_path"))
         
         # Scraper configs
         scraper = data.get("scraper", {})
                 
         self.save_metadata = bool(scraper.get("save_metadata"))
         self.download_location = Path(scraper.get("download_location"))
+        self.check_duplicates = bool(scraper.get("check_duplicates"))
+        self.check_duplicate_threshold = float(scraper.get("check_duplicate_threshold"))
+        self.urls = self._args.urls
         
         success = all(
             value is not None
@@ -62,9 +68,11 @@ class Config(metaclass = SingletonMeta):
                 f"      Headers:\n          {'\n          '.join(header_str_list)}\n"
                 f"      Workers: {self.workers}\n"
                 f"      Timeout: {self.timeout}\n"
-                "  Scraper:\n"
+                f"      Cookies Location: {self.cookie_path}\n\n"
+                "   Scraper:\n"
                 f"       Save Metdata: {self.save_metadata}\n"
-                f"       Download Location: {self.download_location}"
+                f"       Download Location: {self.download_location}\n"
+                f"       URLs: {self.urls}"
                 "\n"
             )
         
@@ -76,7 +84,8 @@ class Config(metaclass = SingletonMeta):
                 "headers": {},
                 "workers": 10,
                 "timeout": 10,
-                "chunk_size": 1048576
+                "chunk_size": 1048576,
+                "cookie_path": ".cookies"
             },
             "scraper": {
                 "save_metadata": 0,

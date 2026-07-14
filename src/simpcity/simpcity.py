@@ -1,92 +1,89 @@
-import logging
 from collections import defaultdict
 from urllib.parse import urlparse
+from pathlib import Path
+import logging
 
+from src.shared import Config
+from src.externals import EXTERNALS
+from src.duplication.duplication import Duplication
+from .models import Post, Thread, ExternalURL
 from .scrapers import ThreadScraper
-from .models import ExternalScraperData, Thread
-from .scrapers.externals import EXTERNAL_SCRAPERS
 
 class SimpCity:
     def __init__(self):
-        self._logger = logging.getLogger("simpcity")
-        self._notified_unsupported: set[str] = set()
+        self._logger = logging.getLogger("SimpCity")
+        self._config = Config()
     
-    def scrape(self, url: str):
-        if url.endswith("/"):
-            url = url[:-1]
-            
-        thread = ThreadScraper.scrape(url)
+    def run(self):
+        urls = self._config.urls
         
-        if not thread:
-            self._logger.error(f"Failed to generate thread object from {url}")
-            return
+        for url in urls:
+            scraper = ThreadScraper()
+            response = scraper.scrape(url)
+            
+            if not response: continue
+            
+            thread, posts = response
+            
+            self._logger.info(f"Found {len(posts)} posts in {thread.url}")
+            self._pass_to_externals(thread, posts)
 
-        self._scrape_thread(thread)
-
-    def _scrape_thread(self, thread: Thread):
-        download_counters: dict[str, dict[str, int]] = defaultdict(
+    
+    def _pass_to_externals(self, thread: Thread, posts: list[Post]):
+        results: dict[str, dict[str, int]] = defaultdict(
             lambda: defaultdict(int)
         )
         
-        for page in thread.pages:
-            page_map: dict[str, list[ExternalScraperData]] = defaultdict(list)
+        for post in posts:
+            domain_map: dict[str, list[ExternalURL]] = defaultdict(list)
             
-            # Sort posts to manageable map
-            for post in page.posts:
-                for external_url in post.external_urls:
-                    parsed = urlparse(external_url)
-                    domain = parsed.netloc
-                    
-                    if "cuckcapital" in domain:
-                        domain = "goonbox.cr"
-                    
-                    # Skip unsupported
-                    if domain not in EXTERNAL_SCRAPERS:
-                        if domain not in self._notified_unsupported:
-                            self._logger.warning(f"Unsupported domain: {domain}")
-                            self._notified_unsupported.add(domain)
-                        continue
-                    
-                    page_map[domain].append(ExternalScraperData(
-                        domain = domain,
-                        username = thread.username,
-                        url = external_url,
-                        posted_at = post.posted_at,
-                        tags = thread.tags
-                    ))
+            for external_url in post.external_urls:
+                parsed = urlparse(external_url.url)
                 
-            # Pass maps to external scrapers.
-            for domain in page_map.keys():
-                external_scraper = EXTERNAL_SCRAPERS.get(domain)
+                domain_map[parsed.netloc].append(external_url)
+            
+            for domain, external_urls in domain_map.items():
+                external = EXTERNALS.get(domain)
                 
-                if not external_scraper:
-                    self._logger.critical(f"Failed to get external scraper: {domain}")
-                    return
+                if not external:
+                    self._logger.error(f"Failed to get external from domain: {domain}")
+                    continue
                 
-                scraper_datas = page_map[domain]
-                external_scraper = external_scraper(scraper_datas)
-                (
-                    downloaded,
-                    failed,
-                    total,
-                    exists
-                ) = external_scraper.scrape()
+                external = external(thread, external_urls, post)
+                result = external.run()
                 
-                download_counters[domain]["downloaded"] += downloaded
-                download_counters[domain]["failed"] += failed
-                download_counters[domain]["total"] += total
-                download_counters[domain]["exists"] += exists
+                failed = result.get("failed", 0)
+                duplicate = result.get("duplicate", 0)
+                complete = result.get("complete", 0)
+                total = result.get("total", 0)
+                
+                results[domain]["failed"] += failed
+                results[domain]["duplicate"] += duplicate
+                results[domain]["complete"] += complete
+                results[domain]["total"] += total
         
-        for domain, values in download_counters.items():
-            downloaded = values["downloaded"]
-            failed = values["failed"]
-            total = values["total"]
-            exists = values["exists"]
+        # Check for duplicates before logging downloads
+        if self._config.check_duplicates:
+            tags = thread.tags
+            tag_path = (tags[0],) if tags else ()
+            duplication = Duplication()
+            duplication.check_duplicates(Path(
+                self._config.download_location,
+                *tag_path,
+                thread.username
+            ))
+        
+        # Log final results for each domain
+        for domain, result in results.items():
+            failed = result.get("failed", 0)
+            duplicate = result.get("duplicate", 0)
+            complete = result.get("complete", 0)
+            total = result.get("total", 0)
             
             self._logger.info(
                 "\n"
                 f"{domain}\n"
-                f"      {'Downloaded:':<12}{f'{downloaded}/{total}':>10}\n"
-                f"      {'Exists:':<12}{f'{exists}/{total}':>10}\n"
-                f"      {'Failed:':<12}{f'{failed}/{total}':>10}"
+                f"      {'Downloaded':<12}{f'{complete}/{total}':>10}\n"
+                f"      {'Existing:':<12}{f'{duplicate}/{total}':>10}\n"
+                f"      {'Failed':<12}{f'{failed}/{total}':>10}"
             )

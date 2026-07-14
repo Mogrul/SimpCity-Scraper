@@ -1,102 +1,140 @@
+from concurrent.futures import ThreadPoolExecutor, as_completed
 import logging
 
 from bs4 import BeautifulSoup
 
+from src.http.client import HTTPClient
+from src.http.models import HTTPRequest
+from src.http.enums import ResponseType, RequestType
+from src.shared import Config
+from ..models import Thread, Post, ExternalURL
 from .page_scraper import PageScraper
-from ..models import Thread
-from src.http.enums import ResponseType
-from src.http.http_client import HttpClient
-
-from src.http.models import (
-    HttpGetRequest,
-    HttpGetResponse
-)
 
 class ThreadScraper:
     def __init__(self):
-        self._logger = logging.getLogger("scraper.thread")
-        self._client = HttpClient()
+        self._logger = logging.getLogger("simpcity.thread")
+        self._http_client = HTTPClient()
+        self._config = Config()
     
-    @classmethod
-    def scrape(cls, url: str) -> Thread | None:
-        scraper = cls()
-
-        response = scraper._get_page(url, 1)
-        if (
-            not response.status_code == 200
-            or not isinstance(response.data, BeautifulSoup)
-        ):
-            scraper._logger.error(f"Failed to get soup from {url}")
+    def scrape(self, url: str) -> tuple[Thread, list[Post]] | None:
+        # Remove paged url if present
+        if "/page-" in url:
+            url = url.split("/page-")[0]
+        
+        elif url.endswith("/"):
+            url = url[:-1]
+        
+        # Get first page
+        request = HTTPRequest(url, RequestType.GET, ResponseType.SOUP)
+        response = self._http_client.send(request)
+        
+        if not isinstance(response.data, BeautifulSoup):
             return
         
-        username = scraper._get_username(response.data)
-        tags = scraper._get_tags(response.data)
+        soup = response.data
+        max_page_num = self._get_max_page_num(soup)
+        
+        # Create a thread object to later add posts to
+        username = self._get_username(url)
+        id = self._get_id(url)
+        tags = self._get_tags(soup)
         
         if not username:
-            scraper._logger.error(f"Failed to retreive username from {url}")
+            self._logger.error(f"Failed to extract username from {url}")
+            return
+        
+        if not id:
+            self._logger.error(f"Failed to extract thread ID from {url}")
             return
         
         thread = Thread(
-            username = username,
             url = url,
+            id = id,
+            page_count = max_page_num,
+            username = username,
             tags = tags
         )
+
+        # get posts from first page
+        posts = []
+        scraper = PageScraper()
         
-        max_page_num = scraper._get_max_page_num(response.data)
-        for page_num in range(1, max_page_num + 1):
-            if page_num != 1:
-                response = scraper._get_page(url, page_num)
-                if (
-                    not response.status_code == 200
-                    or not response.data
-                ):
-                    scraper._logger.error(f"Failed to get soup from page: {response.request.url}")
-                    return
-            
-            page = PageScraper.scrape(response)
-            
-            if not page:
-                scraper._logger.error(f"Failed to get page from: {response.request.url}")
-                return
-            
-            thread.pages.append(page)
+        posts.extend(scraper.scrape(response.data, url))
         
-        return thread
-    
-    def _get_page(self, url: str, page_num: int) -> HttpGetResponse:
-        url = url + f"/page-{page_num}"
+        # Recurse through pages using a thread pool
+        if max_page_num != 1:
+            with ThreadPoolExecutor(self._config.workers, "simpcity.thread.thread") as executor:
+                futures = [
+                    executor.submit(self._scrape_page, url, page_num)
+                    for page_num in range(2, max_page_num + 1)
+                ]
+                
+                for future in as_completed(futures):
+                    try:
+                        page_posts = future.result()
+                    
+                    except Exception as e:
+                        self._logger.error(f"Exception getting page posts: {e}")
+                        continue
+                    
+                    if not isinstance(page_posts, list):
+                        continue
+                    
+                    posts.extend(page_posts)
+                
+        # Return thread object and posts
+        return (thread, posts)
+
+    def _scrape_page(self, url: str, page_num: int) -> list[Post]:
+        scraper = PageScraper()
+        paged_url = f"{url}/page-{page_num}"
+        request = HTTPRequest(paged_url, RequestType.GET, ResponseType.SOUP)
+        response = self._http_client.send(request)
         
-        return self._client.get(HttpGetRequest(
-            url = url,
-            referer = "https://simpcity.cr"
-        ), ResponseType.SOUP)
+        if not isinstance(response.data, BeautifulSoup):
+            return []
+                
+        return scraper.scrape(response.data, url)
     
     def _get_max_page_num(self, soup: BeautifulSoup) -> int:
-        page_nav_main = soup.find("ul", class_ = "pageNav-main")
+        page_navs = soup.find_all("li", class_ = "pageNav-page")
+        if not page_navs:
+            return 1
         
-        if not page_nav_main: return 1
-        
-        page_navs = page_nav_main.find_all("li", class_ = "pageNav-page")
-        last_page_nav = page_navs[-1]
+        last_lav = page_navs[-1]
         
         try:
-            return int(last_page_nav.get_text())
+            return int(last_lav.get_text())
 
         except KeyError:
-            return 0
+            return 1
     
-    def _get_username(self, soup: BeautifulSoup) -> str | None:
-        h1 = soup.find("h1", class_ = "p-title-value")
+    def _get_username(self, url: str) -> str:
+        username = url.split("/")[-1].split(".")[0]
+        items = username.split("-")
         
-        if not h1:
-            return None
-        
-        return "".join(h1.find_all(string = True, recursive = False)).strip()
+        return " ".join(item.title() for item in items[:2])
     
+    def _get_id(self, url: str) -> int | None:
+        id_str = url.split(".")[-1]
+        
+        try:
+            return int(id_str)
+        
+        except KeyError:
+            return
+
     def _get_tags(self, soup: BeautifulSoup) -> list[str]:
-        h1 = soup.find("h1", class_ = "p-title-value")
+        tags = []
         
-        if not h1:
-            return []
+        labels = soup.find_all("span", class_ = "label")
+        for label in labels:
+            text = label.get_text(strip = True)
+            
+            if not isinstance(text, str):
+                continue
+            
+            tags.append(text)
         
-        return [span.get_text(strip = True) for span in h1.select("span.label")]
+        # Strip spaces in tags
+        return [tag.replace(" ", "") for tag in tags]

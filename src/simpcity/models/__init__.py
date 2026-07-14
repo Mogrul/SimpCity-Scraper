@@ -1,5 +1,3 @@
-from .external_scraper_data import ExternalScraperData
-from .page import Page
+from .external_url import ExternalURL
 from .post import Post
 from .thread import Thread
-from .user import User

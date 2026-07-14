@@ -27,11 +27,11 @@ if __name__ == "__main__":
     check_paths()
     
     c = Config()
-    success = c.load_json()
-    
+    success = c.load()
+        
     if not success:
         logger.critical("Failed to read config, exiting...")
         os._exit(0)
     
     ss = SimpCity()
-    ss.scrape("https://simpcity.cr/threads/insanebirkin.1761775")
+    ss.run()

@@ -6,13 +6,16 @@
             "Accept-Encoding": "gzip, deflate, br, zstd",
             "Connection": "keep-alive"
         },
-        "workers": 1,
+        "workers": 10,
         "timeout": 10,
-        "chunk_size": 1048576
+        "chunk_size": 1048576,
+        "cookie_path": ".cookies"
     },
     
     "scraper": {
         "save_metadata": 0,
-        "download_location": "Downloads"
+        "download_location": "Downloads",
+        "check_duplicates": 1,
+        "check_duplicate_threshold": 0.9
     }
 }

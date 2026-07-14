@@ -1,0 +1,203 @@
+import logging
+from pathlib import Path
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from uuid import uuid5, NAMESPACE_URL
+
+from src.simpcity.models import Thread, ExternalURL, Post
+from src.http.models import HTTPResponse, HTTPRequest
+from src.http.enums import RequestType, ResponseType
+from src.http.client import HTTPClient
+from src.shared import Config
+
+class External:
+    def __init__(
+            self,
+            
+            # SimpCity args
+            thread: Thread,
+            external_urls: list[ExternalURL],
+            post: Post,
+            
+            # External subclass args
+            logger: logging.Logger | None = None,
+            thread_prefix: str | None = None
+    ):
+        # External subclass args
+        self._thread_prefix = thread_prefix if thread_prefix else "external.thread"
+        self._logger = logger if logger else logging.getLogger("external")
+        
+        # SimpCity args
+        self._thread = thread
+        self._external_urls = external_urls
+        self._post = post
+        
+        self._config = Config()
+        self._http_client = HTTPClient()
+    
+    def run(self) -> dict[str, int]:
+        failed = 0
+        duplicate = 0
+        complete = 0
+        
+        with ThreadPoolExecutor(
+            self._config.workers,
+            self._thread_prefix
+        ) as executor:
+            futures = [
+                executor.submit(self.on_submission, external_url)
+                for external_url in self._external_urls
+            ]
+            
+            for future in as_completed(futures):
+                try:
+                    responses = future.result()
+                
+                except Exception as e:
+                    self._logger.error(f"Error running submission: {e}")
+                    failed += 1
+                    continue
+                
+                if not isinstance(responses, list):
+                    failed += 1
+                    continue
+                
+                for response in responses:
+                    if response.status_code == 409:
+                        duplicate += 1
+                        continue
+                    
+                    if response.status_code == 200:
+                        if not isinstance(response.data, dict):
+                            failed += 1
+                            continue
+                        
+                        destination = response.data.get("destination", Path())
+                        file_size = response.data.get("file_size", 0)
+                        time_taken = response.data.get("time_taken", .0)
+                        
+                        formatted_bytes = self._format_bytes(file_size)
+                        formatted_time = self._format_duration(time_taken)
+                        
+                        self._logger.info(
+                            f"{formatted_bytes:>10}"
+                            f"{formatted_time:^8}"
+                            f"      Downloaded {destination}"
+                        )
+                        
+                        complete += 1
+                        continue
+                    
+                    else:
+                        failed += 1
+        
+        total = failed + duplicate + complete
+        
+        return {
+            "failed": failed,
+            "duplicate": duplicate,
+            "complete": complete,
+            "total": total
+        }
+    
+    def on_submission(self, external_url: ExternalURL) -> list[HTTPResponse]:
+        return []
+    
+    def handle_album(self, external_url: ExternalURL) -> list[HTTPResponse]:
+        return []
+    
+    def handle_file(self, external_url: ExternalURL) -> list[HTTPResponse]:
+        return []
+    
+    def download(self, external_url: ExternalURL) -> HTTPResponse | None:
+        file_path = self._get_file_path(external_url)
+        
+        if not file_path:
+            self._logger.error(f"Failed to generate file path from: {external_url}")
+            return
+        
+        request = HTTPRequest(
+            url = external_url.url if not external_url.signed else external_url.signed,
+            request_type = RequestType.DOWNLOAD,
+            response_type = ResponseType.DOWNLOAD,
+            payload = {
+                "destination": file_path
+            }
+        )
+        
+        return self._http_client.send(request)
+        
+    
+    def _get_file_path(self, external_url: ExternalURL) -> Path | None:
+        url = external_url.url
+        signed = external_url.signed
+        tags = self._thread.tags
+        username = self._thread.username
+        base_path = self._config.download_location
+        posted = self._post.posted
+        
+        if "?" in url:
+            url = url.split("?")[0]
+        
+        if not external_url.file_name:
+            url_path = url.split("/")[-1]
+            if "." not in url_path:
+                if not signed:
+                    return
+                
+                # Attempt to get from signed
+                external_url.file_name = signed.split("/")[-1]
+            
+            else:
+                external_url.file_name = url.split("/")[-1]
+            
+        file_id = str(
+            uuid5(NAMESPACE_URL, url + external_url.file_name)
+        ).replace("-", "")[:-16]
+        original_file_path = Path(external_url.file_name)
+        tag_path = (tags[0],) if tags else ()
+        
+        thread_path = Path(
+            base_path,
+            *tag_path,
+            username
+        )
+        
+        post_path = Path(
+            str(posted.year),
+            str(posted.strftime("%B"))
+        )
+        
+        file_name = Path(
+            f"[{posted.year}-{posted.month:02d}-{posted.day:02d}] "
+            f"{file_id}{original_file_path.suffix}"
+        )
+        
+        return thread_path / post_path / file_name
+    
+    def _format_bytes(self, amount: int) -> str:
+        value = float(amount)
+    
+        for unit in ["B", "KB", "MB", "GB", "TB"]:
+            if value < 1024:
+                return f"{value:.2f} {unit}"
+                    
+            value /= 1024
+
+        return f"{value:.2f} PB"
+    
+    def _format_duration(self, seconds: float) -> str:
+        if seconds < 1:
+            return f"{seconds * 1000:.0f}ms"
+        elif seconds < 60:
+            return f"{seconds:.3f}s"
+        elif seconds < 3600:
+            minutes, seconds = divmod(seconds, 60)
+            return f"{int(minutes)}m {seconds:.1f}s"
+        elif seconds < 86400:
+            hours, remainder = divmod(seconds, 3600)
+            minutes = remainder // 60
+            return f"{int(hours)}h {int(minutes)}m"
+        else:
+            days, remainder = divmod(seconds, 86400)
+            hours = remainder // 3600
+            return f"{int(days)}d {int(hours)}h"

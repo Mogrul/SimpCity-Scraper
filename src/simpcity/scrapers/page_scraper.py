@@ -1,61 +1,26 @@
 import logging
 
-from bs4 import BeautifulSoup, Tag
+from bs4 import BeautifulSoup
 
-from ..models import Page
+from ..models import Post
 from .post_scraper import PostScraper
-from src.http.models import HttpGetResponse
 
 class PageScraper:
     def __init__(self):
-        self._logger = logging.getLogger("scraper.page")
+        self._logger = logging.getLogger("simpcity.page")
     
-    @classmethod
-    def scrape(cls, response: HttpGetResponse) -> Page | None:
-        if (
-            response.status_code != 200
-            or not isinstance(response.data, BeautifulSoup)
-        ):
-            return
-        
-        scraper = cls()
-        url = response.request.url
-        
-        page = Page(
-            url = url,
-            page_num = scraper._get_page_num(url)
-        )
-        
-        post_tags = scraper._get_post_blocks(response.data)  
-        if not post_tags:
-            scraper._logger.error(f"Failed to get post tags in {url}")
-            return
-              
-        for post_tag in post_tags:
-            post = PostScraper.scrape(url, post_tag)
+    def scrape(self, page: BeautifulSoup, url: str) -> list[Post]:
+        posts: list[Post] = []
+        post_divs = page.find_all("div", class_ = "message-cell--main")
+        post_divs = post_divs[:-1] # Last = message box
+                
+        # Recursve through post objects and extend posts
+        scraper = PostScraper()
+        for post_div in post_divs:
+            post = scraper.scrape(post_div, url)
             
-            if not post:
-                scraper._logger.error(f"Failed to scrape post tag in {url}")
-                return
+            if not post: continue
             
-            page.posts.append(post)
+            posts.append(post)
         
-        scraper._logger.info(f"Found {len(page.posts)} posts in {url}")
-        
-        return page
-    
-    def _get_page_num(self, url: str) -> int:
-        page_str = url.split("/")[-1].split("page-")[-1]
-        
-        try:
-            return int(page_str)
-
-        except KeyError:
-            return 0
-    
-    def _get_post_blocks(self, soup: BeautifulSoup) -> list[Tag] | None:
-        blocks = soup.find_all("article", class_ = "message--post")
-        
-        if not blocks: return None
-        return blocks
-        
+        return posts
