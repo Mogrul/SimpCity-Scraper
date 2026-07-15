@@ -12,7 +12,7 @@ import brotli
 
 from src.shared import SingletonMeta, Config
 from .models import HTTPRequest, HTTPResponse, HTTPHeaders
-from .enums import RequestType, ResponseType
+from .enums import RequestType, ResponseType, StatusCode
 
 class HTTPClient(metaclass = SingletonMeta):
     def __init__(self):
@@ -168,15 +168,19 @@ class HTTPClient(metaclass = SingletonMeta):
             return self._on_unresponsive_error(request)
         
         destination = request.payload.get("destination")
+        post_id = request.payload.get("post_id")
         
         if not isinstance(destination, Path):
+            return self._on_unresponsive_error(request)
+        
+        if not isinstance(post_id, int):
             return self._on_unresponsive_error(request)
         
         # If it exists
         if destination.exists():
             return HTTPResponse(
                 request = request,
-                status_code = 409
+                status_code = StatusCode.DUPLICATE_DOWNLOAD.value
             )
         
         chunk_size = self._config.chunk_size
@@ -235,7 +239,8 @@ class HTTPClient(metaclass = SingletonMeta):
             data = {
                 "destination": destination,
                 "file_size": file_size,
-                "time_taken": time_taken
+                "time_taken": time_taken,
+                "post_id": post_id
             }
         )
     

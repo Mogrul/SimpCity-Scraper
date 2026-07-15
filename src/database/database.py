@@ -3,7 +3,7 @@ import sqlite3
 import logging
 
 from src.shared import SingletonMeta
-from .models import DuplicateItem
+from .models import DuplicateItem, ExtractedItem
 
 class Database(metaclass = SingletonMeta):
     def __init__(self, database_path = Path("data/data.db")):
@@ -25,6 +25,7 @@ class Database(metaclass = SingletonMeta):
         
         # deleted path -> DuplicateItem
         self.duplicate_items: dict[Path, DuplicateItem] = {}
+        self.extracted_items: list[Path] = []
         
         self._logger.info(f"Connected to {database_path}")
     
@@ -85,5 +86,33 @@ class Database(metaclass = SingletonMeta):
         
         self._logger.info(f"Added {len(self.duplicate_items)} duplicate items to cache")
         
+    def add_extracted(self, item: ExtractedItem):
+        q = """
+            INSERT INTO extracted
+            VALUES (?)
+        """
         
+        self._connection.execute(
+            q,
+            (
+                str(item.path),
+            )
+        )
+        
+        self._connection.commit()
+    
+    def load_extracted(self):
+        q = """
+            SELECT * FROM extracted
+        """
+        
+        rows = self._connection.execute(q).fetchall()
+        
+        for row in rows:
+            path = Path(row["path"])
+            
+            self.extracted_items.append(path)
+        
+        self._logger.info(f"Added {len(self.extracted_items)} extracted items to cache")
+
         

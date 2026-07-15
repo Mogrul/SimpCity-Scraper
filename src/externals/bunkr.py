@@ -3,6 +3,7 @@ from urllib.parse import urlparse
 
 from bs4 import BeautifulSoup
 
+from src.simpcity.models import Post
 from src.http.models import HTTPResponse, HTTPRequest
 from src.http.enums import ResponseType, RequestType
 from src.simpcity.models.external_url import ExternalURL
@@ -18,19 +19,20 @@ class Bunkr(External):
             **kwargs
         )
     
-    def on_submission(self, external_url: ExternalURL) -> list[HTTPResponse]:
-        if "/a/" in external_url.url:
-            return self.handle_album(external_url)
-        
-        elif "/f/" in external_url.url:
-            return self.handle_file(external_url)
-        
-        elif "/v/" in external_url.url:
-            return self.handle_file(external_url)
+    def on_submission(self, post: Post) -> list[HTTPResponse]:
+        for external_url in post.external_urls:
+            if "/a/" in external_url.url:
+                return self.handle_album(post, external_url)
+            
+            elif "/f/" in external_url.url:
+                return self.handle_file(post, external_url)
+            
+            elif "/v/" in external_url.url:
+                return self.handle_file(post, external_url)
         
         return []
     
-    def handle_album(self, external_url: ExternalURL) -> list[HTTPResponse]:
+    def handle_album(self, post: Post, external_url: ExternalURL) -> list[HTTPResponse]:
         # Get the page and extract the items from it
         request = HTTPRequest(
             url = external_url.url,
@@ -65,7 +67,7 @@ class Bunkr(External):
             for file in files:
                 url = "https://" + urlparse(external_url.url).netloc + file
                 external_data = ExternalURL(url)
-                download = self.handle_file(external_data)
+                download = self.handle_file(post, external_data)
                 
                 if not download:
                     continue
@@ -74,7 +76,7 @@ class Bunkr(External):
                 
         return downloads
     
-    def handle_file(self, external_url: ExternalURL) -> list[HTTPResponse]:
+    def handle_file(self, post: Post, external_url: ExternalURL) -> list[HTTPResponse]:
         # Get file ID from page
         file_id = self._get_file_id(external_url)
         
@@ -131,6 +133,7 @@ class Bunkr(External):
         external_url.signed = signed_domain + signed_path
         
         downloaded = self.download(
+            post,
             external_url,
             headers = {
                 "referer": "https://dl.bunkr.cr/",

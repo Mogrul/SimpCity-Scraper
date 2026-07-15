@@ -1,5 +1,6 @@
 import logging
 
+from src.simpcity.models import Post
 from src.http.models import HTTPResponse, HTTPRequest
 from src.http.enums import RequestType, ResponseType
 from src.simpcity.models.external_url import ExternalURL
@@ -15,26 +16,27 @@ class GoonBox(External):
             **kwargs
         )
     
-    def on_submission(self, external_url: ExternalURL) -> list[HTTPResponse]:
-        if "/img/" in external_url.url:
-            return self.handle_file(external_url)
-        
-        elif "/a/" in external_url.url:
-            return self.handle_album(external_url)
+    def on_submission(self, post: Post) -> list[HTTPResponse]:
+        for external_url in post.external_urls:
+            if "/img/" in external_url.url:
+                return self.handle_file(post, external_url)
+            
+            elif "/a/" in external_url.url:
+                return self.handle_album(post, external_url)
         
         return []
     
-    def handle_file(self, external_url: ExternalURL) -> list[HTTPResponse]:
+    def handle_file(self, post: Post, external_url: ExternalURL) -> list[HTTPResponse]:
         if not external_url.signed:
             return []
         
-        download_response = self.download(external_url)
+        download_response = self.download(post, external_url)
         if not download_response:
             return []
         
         return [download_response]
     
-    def handle_album(self, external_url: ExternalURL) -> list[HTTPResponse]:
+    def handle_album(self, post: Post, external_url: ExternalURL) -> list[HTTPResponse]:
         album_id = external_url.url.split("/a/")[-1].split(".")[-1]
         api_url = f"https://goonbox.cr/api/albums/{album_id}"
         
@@ -91,7 +93,7 @@ class GoonBox(External):
                     file_name = file_name
                 )
                 
-                download = self.download(new_external_url)
+                download = self.download(post, new_external_url)
                 
                 if not download:
                     continue

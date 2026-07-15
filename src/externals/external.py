@@ -2,12 +2,20 @@ import logging
 from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from uuid import uuid5, NAMESPACE_URL
+import subprocess
 
-from src.simpcity.models import Thread, ExternalURL, Post
+from src.simpcity.models import (
+    Thread, ExternalURL,
+    Post, DomainStats
+)
 from src.http.models import HTTPResponse, HTTPRequest
-from src.http.enums import RequestType, ResponseType, StatusCode
+from src.http.enums import (
+    RequestType, ResponseType,
+    StatusCode
+)
 from src.http.client import HTTPClient
 from src.database.database import Database
+from src.database.models import ExtractedItem
 from src.shared import Config
 
 class External:
@@ -16,8 +24,9 @@ class External:
             
             # SimpCity args
             thread: Thread,
-            external_urls: list[ExternalURL],
-            post: Post,
+            domain: str,
+            posts: list[Post],
+            post_by_id: dict[int, Post],
             
             # External subclass args
             logger: logging.Logger | None = None,
@@ -29,26 +38,31 @@ class External:
         
         # SimpCity args
         self._thread = thread
-        self._external_urls = external_urls
-        self._post = post
+        self._domain = domain
+        self._posts = posts
+        self._post_by_id = post_by_id
         
         self._database = Database()
         self._config = Config()
         self._http_client = HTTPClient()
     
-    def run(self) -> dict[str, int]:
-        failed = 0
-        existing = 0
-        complete = 0
+    def run(self) -> DomainStats:
+        marked_extracted = 0
         marked_duplicate = 0
         
+        existing = 0
+        
+        extracted = 0
+        downloaded = 0
+        failed = 0
+        
         with ThreadPoolExecutor(
-            self._config.workers,
-            self._thread_prefix
+            max_workers = self._config.workers,
+            thread_name_prefix = self._thread_prefix
         ) as executor:
             futures = [
-                executor.submit(self.on_submission, external_url)
-                for external_url in self._external_urls
+                executor.submit(self.on_submission, post)
+                for post in self._posts
             ]
             
             for future in as_completed(futures):
@@ -56,73 +70,112 @@ class External:
                     responses = future.result()
                 
                 except Exception as e:
-                    self._logger.error(f"Error running submission: {e}")
-                    failed += 1
-                    continue
-                
-                if not isinstance(responses, list):
+                    self._logger.error(f"Error on submission: {e}")
                     failed += 1
                     continue
                 
                 for response in responses:
+                    # If the download path already exists
+                    if response.status_code == StatusCode.DUPLICATE_DOWNLOAD.value:
+                        existing += 1
+                        continue
+                    
+                    # If download was marked as already extracted
+                    if response.status_code == StatusCode.ALREADY_EXTRACTED.value:
+                        marked_extracted += 1
+                        continue
+                    
+                    # If download was marked as a duplicate file
                     if response.status_code == StatusCode.MARKED_DUPLICATE.value:
                         marked_duplicate += 1
                         continue
                     
-                    if response.status_code == 409:
-                        existing += 1
+                    # If the HTTP request failed
+                    if response.status_code != 200:
+                        failed += 1
                         continue
                     
-                    if response.status_code == 200:
-                        if not isinstance(response.data, dict):
-                            failed += 1
+                    # If there's no data in the response
+                    if not isinstance(response.data, dict):
+                        failed += 1
+                        continue
+                    
+                    destination = response.data.get("destination", Path())
+                    file_size = response.data.get("file_size", 0)
+                    time_taken = response.data.get("time_taken", .0)
+                    post_id = response.data.get("post_id")
+                    
+                    # If there's no post_id in response
+                    if not post_id:
+                        failed += 1
+                        continue
+                    
+                    # Log successful download
+                    self._logger.info(
+                        f"{self._format_bytes(file_size):<10}"
+                        f"{self._format_duration(time_taken):^10}"
+                        f"Downloaded: {destination}"
+                    )
+                    
+                    downloaded += 1
+                    
+                    # Attempt extraction
+                    for extract_response in self._attempt_extraction(
+                            post_id,
+                            response,
+                            destination
+                    ):
+                        if not extract_response.status_code == StatusCode.EXTRACTED.value:
                             continue
                         
-                        destination = response.data.get("destination", Path())
-                        file_size = response.data.get("file_size", 0)
-                        time_taken = response.data.get("time_taken", .0)
+                        if not isinstance(extract_response.data, dict):
+                            continue
                         
-                        formatted_bytes = self._format_bytes(file_size)
-                        formatted_time = self._format_duration(time_taken)
+                        extract_destination = extract_response.data.get("destination", Path)
+                        extract_file_size = extract_response.data.get("file_size", 0)
                         
                         self._logger.info(
-                            f"{formatted_bytes:>10}"
-                            f"{formatted_time:^8}"
-                            f"      Downloaded {destination}"
+                            f"{self._format_bytes(extract_file_size):<10}"
+                            f"{'':^10}"
+                            f"Extracted: {extract_destination}"
                         )
                         
-                        complete += 1
-                        continue
-                    
-                    else:
-                        failed += 1
+                        extracted += 1
         
-        total = failed + existing + complete + marked_duplicate
-        
-        return {
-            "failed": failed,
-            "existing": existing,
-            "complete": complete,
-            "total": total,
-            "marked_duplicate": marked_duplicate
-        }
-    
-    def on_submission(self, external_url: ExternalURL) -> list[HTTPResponse]:
+        return DomainStats(
+            marked_extracted,
+            marked_duplicate,
+            extracted,
+            downloaded,
+            failed,
+            existing,
+            total = (
+                marked_extracted
+                + marked_duplicate
+                + extracted
+                + downloaded
+                + failed
+                + existing
+            )
+        )
+                      
+    def on_submission(self, post: Post) -> list[HTTPResponse]:
         return []
     
-    def handle_album(self, external_url: ExternalURL) -> list[HTTPResponse]:
+    def handle_album(self, post: Post, external_url: ExternalURL) -> list[HTTPResponse]:
         return []
     
-    def handle_file(self, external_url: ExternalURL) -> list[HTTPResponse]:
+    def handle_file(self, post: Post, external_url: ExternalURL) -> list[HTTPResponse]:
         return []
     
     def download(
             self,
+            post: Post,
             external_url: ExternalURL,
             params: dict | None = None,
             headers: dict | None = None
     ) -> HTTPResponse | None:
-        file_path = self._get_file_path(external_url)
+        file_path = self._get_file_path(post, external_url)
         
         if not file_path:
             self._logger.error(f"Failed to generate file path from: {external_url}")
@@ -135,7 +188,8 @@ class External:
             params = params,
             headers = headers,
             payload = {
-                "destination": file_path
+                "destination": file_path,
+                "post_id": post.id
             }
         )
         
@@ -145,15 +199,21 @@ class External:
                 status_code = StatusCode.MARKED_DUPLICATE.value
             )
         
+        if file_path in self._database.extracted_items:
+            return HTTPResponse(
+                request = request,
+                status_code = StatusCode.ALREADY_EXTRACTED.value
+            )
+        
         return self._http_client.send(request)
         
-    def _get_file_path(self, external_url: ExternalURL) -> Path | None:
+    def _get_file_path(self, post: Post, external_url: ExternalURL) -> Path | None:
         url = external_url.url
         signed = external_url.signed
         tags = self._thread.tags
         username = self._thread.username
         base_path = self._config.download_location
-        posted = self._post.posted
+        posted = post.posted
         
         if "?" in url:
             url = url.split("?")[0]
@@ -221,3 +281,95 @@ class External:
             days, remainder = divmod(seconds, 86400)
             hours = remainder // 3600
             return f"{int(days)}d {int(hours)}h"
+    
+    def _attempt_extraction(
+            self,
+            post_id: int,
+            response: HTTPResponse,
+            destination: Path
+    ) -> list[HTTPResponse]:
+        post = self._post_by_id[post_id]
+        
+        if not isinstance(post, Post):
+            self._logger.error(f"Failed to get post by id: {post_id}")
+            return []
+        
+        tags = self._thread.tags
+        username = self._thread.username
+        tag_path = (tags[0],) if tags else ()
+        
+        temp_path = Path(
+            self._config.download_location,
+            *tag_path,
+            username,
+            "temp"
+        )
+        
+        result = subprocess.run(
+            [
+                str(self._config.zip_path),
+                "x",
+                str(destination),
+                f"-o{temp_path}",
+                "-y"
+            ],
+            capture_output = True,
+            text = True
+        )
+        
+        # On extraction fail - not an archive
+        if result.returncode != 0:
+            return []
+        
+        # On success
+        # Add extracted item to database
+        self._database.add_extracted(ExtractedItem(destination))
+        
+        # Delete archive
+        destination.unlink()
+        
+        # Rename and move extracted files
+        responses = []
+        for file in temp_path.rglob("*"):
+            if not file.is_file():
+                continue
+            
+            external_url = ExternalURL(
+                url = response.request.url,
+                file_name = file.name
+            )
+            
+            new_path = self._get_file_path(post, external_url)
+            if not new_path:
+                continue
+            
+            try:
+                # Already extracted
+                file.rename(new_path)
+            except FileExistsError:
+                return []
+
+            responses.append(
+                HTTPResponse(
+                    request = response.request,
+                    status_code = StatusCode.EXTRACTED.value,
+                    data = {
+                        "destination": new_path,
+                        "file_size": new_path.stat().st_size,
+                    },
+                )
+            )
+        
+        # Remove empty directories
+        for directory in sorted(
+            temp_path.rglob("*"),
+            key=lambda p: len(p.parts),
+            reverse=True
+        ):
+            if directory.is_dir():
+                directory.rmdir()
+
+        # Remove the root temp folder
+        temp_path.rmdir()
+        
+        return responses

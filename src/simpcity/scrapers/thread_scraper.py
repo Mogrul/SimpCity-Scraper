@@ -1,5 +1,6 @@
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import logging
+from urllib.parse import unquote
 
 from bs4 import BeautifulSoup
 
@@ -113,7 +114,7 @@ class ThreadScraper:
         username = url.split("/")[-1].split(".")[0]
         items = username.split("-")
         
-        return " ".join(item.title() for item in items[:2])
+        return unquote(" ".join(item.title() for item in items[:2])).strip()
     
     def _get_id(self, url: str) -> int | None:
         id_str = url.split(".")[-1]

@@ -36,6 +36,7 @@ if __name__ == "__main__":
     
     db = Database()
     db.load_duplicates()
+    db.load_extracted()
     
     ss = SimpCity()
     ss.run()
