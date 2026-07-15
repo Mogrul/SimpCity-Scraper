@@ -1,5 +1,9 @@
 from collections import defaultdict
 from urllib.parse import urlparse
+from concurrent.futures import (
+    ThreadPoolExecutor, as_completed,
+    Future
+)
 from pathlib import Path
 import logging
 from copy import copy
@@ -39,20 +43,23 @@ class SimpCity:
                     global_stats[domain] += stats
                 else:
                     global_stats[domain] = stats
-                
+            
+            tag_path = (thread.tags[0],) if thread.tags else ()
+            user_path = Path(
+                self._config.download_location,
+                *tag_path,
+                thread.username
+            )
+            
+            # Nothing downloaded
+            if not user_path.exists():
+                continue
+            
+            # Cleanup empty directories
+            self._cleanup(user_path)
+            
             # Check for duplicates
             if self._config.check_duplicates:
-                tag_path = (thread.tags[0],) if thread.tags else ()
-                user_path = Path(
-                    self._config.download_location,
-                    *tag_path,
-                    thread.username
-                )
-                
-                # Nothing downloaded
-                if not user_path.exists():
-                    continue
-                
                 duplication = Duplication()
                 duplication.check_duplicates(user_path)
             
@@ -64,6 +71,26 @@ class SimpCity:
             thread: Thread,
             posts: list[Post]
     ) -> dict[str, DomainStats]:
+        def handle_domain(
+                domain: str,
+                domain_posts: list[Post],
+                post_by_id: dict[int, Post]
+        ) -> tuple[str, DomainStats] | None:
+            external = EXTERNALS.get(domain)
+            
+            if not external:
+                self._logger.critical(f"Domain {domain} not found in externals")
+                return
+
+            external = external(
+                thread,
+                domain,
+                domain_posts,
+                post_by_id
+            )
+            
+            return (domain, external.run())
+                
         domain_map: dict[str, list[Post]] = defaultdict(list)
         post_by_id: dict[int, Post] = {}
 
@@ -83,28 +110,45 @@ class SimpCity:
                 domain_map[domain].append(filtered_post)
 
         domain_stats: dict[str, DomainStats] = {}
-        for domain, domain_posts in domain_map.items():
-            if domain not in EXTERNALS:
-                self._logger.critical(f"Domain {domain} not found in externals")
-                continue
+        domain_count = len(domain_map.keys())
+        
+        # Each domain gets their own thread.
+        with ThreadPoolExecutor(
+                max_workers = 1 if domain_count == 0 else domain_count,
+                thread_name_prefix = "domain.thread"
+        ) as executor:
+            futures: list[Future] = []
             
-            if domain in self._config.skip_scrapers:
-                continue
+            # Submit all futures
+            for domain, domain_posts in domain_map.items():
+                if domain not in EXTERNALS:
+                    self._logger.critical(f"Domain {domain} not found in externals")
+                    continue
+                
+                if domain in self._config.skip_scrapers:
+                    continue
+                
+                futures.append(executor.submit(
+                    handle_domain,
+                    domain,
+                    domain_posts,
+                    post_by_id
+                ))
             
-            external = EXTERNALS.get(domain)
-            
-            if not external:
-                self._logger.critical(f"Domain {domain} not found in externals")
-                continue
-            
-            external = external(
-                thread,
-                domain,
-                domain_posts,
-                post_by_id
-            )
-            
-            domain_stats[domain] = external.run()
+            # Handle futures completing
+            for future in as_completed(futures):
+                try:
+                    result = future.result()
+                
+                except Exception as e:
+                    self._logger.exception(f"Exception on domain: {e}")
+                    continue
+                
+                if not result:
+                    continue
+                
+                domain, stats = result
+                domain_stats[domain] = stats
         
         return domain_stats
     
@@ -123,3 +167,20 @@ class SimpCity:
                 f"      {'Marked Duplicate:':<20}{f'{stats.marked_duplicate}/{stats.total}':>15}\n"
                 f"      {'Marked Extracted:':<20}{f'{stats.marked_extracted}/{stats.total}':>15}"
             )
+    
+    def _cleanup(
+            self,
+            path: Path
+    ):
+        # Cleans up empty directories
+        for directory in sorted(
+            path.rglob("*"),
+            key=lambda p: len(p.parts),
+            reverse=True,
+        ):
+            if directory.is_dir() and not any(directory.iterdir()):
+                directory.rmdir()
+
+        # Finally remove the root if it's empty
+        if not any(path.iterdir()):
+            path.rmdir()

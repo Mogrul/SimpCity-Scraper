@@ -18,11 +18,13 @@ class ConsoleFormatter(logging.Formatter):
         time = self.formatTime(record, "%Y-%m-%d %H:%M:%S")
         level = record.levelname
         name = record.name
+        thread = record.threadName.upper() if record.threadName else ""
         msg = record.getMessage()
         
         time_str = f"{self.TIME}{time}{self.RESET}"
         level_str = f"{self.LEVEL}{level:<8}{self.RESET}"
         name_str = f"{self.NAME}{name.upper():<16}{self.RESET}"
+        thread_str = f"{self.NAME}{thread:<20}{self.RESET}"
         end_str = f"{self.RED}>>{self.RESET}"
         msg_str = re.sub(
             r"\*(.*?)\*",
@@ -31,7 +33,7 @@ class ConsoleFormatter(logging.Formatter):
         )
         
         return (
-            f"{time_str} {level_str} {name_str} {end_str}\n"
+            f"{time_str} {level_str} {name_str} {thread_str} {end_str}\n"
             f"      {msg_str}"
         )
 
