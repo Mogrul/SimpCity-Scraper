@@ -1,6 +1,7 @@
 import logging
 
-from src.http.models import HTTPResponse
+from src.http.models import HTTPResponse, HTTPRequest
+from src.http.enums import RequestType, ResponseType
 from src.simpcity.models.external_url import ExternalURL
 
 from .external import External
@@ -18,6 +19,9 @@ class GoonBox(External):
         if "/img/" in external_url.url:
             return self.handle_file(external_url)
         
+        elif "/a/" in external_url.url:
+            return self.handle_album(external_url)
+        
         return []
     
     def handle_file(self, external_url: ExternalURL) -> list[HTTPResponse]:
@@ -29,3 +33,70 @@ class GoonBox(External):
             return []
         
         return [download_response]
+    
+    def handle_album(self, external_url: ExternalURL) -> list[HTTPResponse]:
+        album_id = external_url.url.split("/a/")[-1].split(".")[-1]
+        api_url = f"https://goonbox.cr/api/albums/{album_id}"
+        
+        request = HTTPRequest(
+            url = api_url,
+            request_type = RequestType.GET,
+            response_type = ResponseType.DICT
+        )
+        response = self._http_client.send(request)
+        
+        if not isinstance(response.data, dict):
+            return []
+        
+        pagination = response.data.get("pagination")
+        
+        if not isinstance(pagination, dict):
+            return []
+        
+        last_page = pagination.get("last_page", 1)
+        
+        downloaded: list[HTTPResponse] = []
+        for page_num in range(1, last_page + 1):
+            if page_num != 1:
+                request = HTTPRequest(
+                    url = f"{api_url}/images?page={page_num}",
+                    request_type = RequestType.GET,
+                    response_type = ResponseType.DICT
+                )
+                response = self._http_client.send(request)
+                
+            if not isinstance(response.data, dict):
+                continue
+            
+            images = response.data.get("images")
+            if not isinstance(images, list):
+                continue
+            
+            for image in images:
+                if not isinstance(image, dict):
+                    continue
+                
+                signed_url = image.get("original_url")
+                file_name = image.get("original_filename")
+                
+                if (
+                    not isinstance(signed_url, str)
+                    or not isinstance(file_name, str)
+                ):
+                    continue
+                                
+                new_external_url = ExternalURL(
+                    url = external_url.url,
+                    signed = signed_url,
+                    file_name = file_name
+                )
+                
+                download = self.download(new_external_url)
+                
+                if not download:
+                    continue
+                
+                downloaded.append(download)
+            
+        return downloaded
+                

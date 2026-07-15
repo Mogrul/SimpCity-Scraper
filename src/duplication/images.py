@@ -1,14 +1,13 @@
 import logging
 from pathlib import Path
-from concurrent.futures import (
-    ThreadPoolExecutor, as_completed,
-    FIRST_COMPLETED, wait, Future
-)
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from PIL import Image
 import imagehash
 from imagehash import ImageHash
 
+from src.database.database import Database
+from src.database.models import DuplicateItem
 from src.shared import Config
 
 class ImageDuplication:
@@ -17,6 +16,7 @@ class ImageDuplication:
         self._config = Config()
         self._images_path = images_path
         self._max_pending = self._config.workers * 4
+        self._database = Database()
         
         self._hashes: dict[Path, ImageHash] = {}
         self._to_delete: list[dict[str, Path | float]] = []
@@ -163,10 +163,19 @@ class ImageDuplication:
                 kept = img_2
                 kept_size = img_2_size
             
+            duplicate_item = DuplicateItem(
+                kept_path = kept,
+                deleted_path = deleted,
+                kept_size = kept_size,
+                deleted_size = deleted_size,
+                similarity = similarity
+            )
+            self._database.add_duplicate(duplicate_item)
+            
             delete_count += 1
             self._logger.info(
                 "\n"
-                "Duplicate Found:"
+                "Duplicate Found:\n"
                 f"      {self._format_bytes(deleted_size):>10} Deleted {deleted}\n"
                 f"      {self._format_bytes(kept_size):>10} Kept: {kept}"
             )

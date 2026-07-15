@@ -9,3 +9,4 @@ class HTTPResponse:
     request: HTTPRequest
     status_code: int
     data: BeautifulSoup | str | dict | None = None
+    headers: dict | None = None

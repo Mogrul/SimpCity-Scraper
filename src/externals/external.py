@@ -5,8 +5,9 @@ from uuid import uuid5, NAMESPACE_URL
 
 from src.simpcity.models import Thread, ExternalURL, Post
 from src.http.models import HTTPResponse, HTTPRequest
-from src.http.enums import RequestType, ResponseType
+from src.http.enums import RequestType, ResponseType, StatusCode
 from src.http.client import HTTPClient
+from src.database.database import Database
 from src.shared import Config
 
 class External:
@@ -31,13 +32,15 @@ class External:
         self._external_urls = external_urls
         self._post = post
         
+        self._database = Database()
         self._config = Config()
         self._http_client = HTTPClient()
     
     def run(self) -> dict[str, int]:
         failed = 0
-        duplicate = 0
+        existing = 0
         complete = 0
+        marked_duplicate = 0
         
         with ThreadPoolExecutor(
             self._config.workers,
@@ -62,8 +65,12 @@ class External:
                     continue
                 
                 for response in responses:
+                    if response.status_code == StatusCode.MARKED_DUPLICATE.value:
+                        marked_duplicate += 1
+                        continue
+                    
                     if response.status_code == 409:
-                        duplicate += 1
+                        existing += 1
                         continue
                     
                     if response.status_code == 200:
@@ -90,13 +97,14 @@ class External:
                     else:
                         failed += 1
         
-        total = failed + duplicate + complete
+        total = failed + existing + complete + marked_duplicate
         
         return {
             "failed": failed,
-            "duplicate": duplicate,
+            "existing": existing,
             "complete": complete,
-            "total": total
+            "total": total,
+            "marked_duplicate": marked_duplicate
         }
     
     def on_submission(self, external_url: ExternalURL) -> list[HTTPResponse]:
@@ -108,7 +116,12 @@ class External:
     def handle_file(self, external_url: ExternalURL) -> list[HTTPResponse]:
         return []
     
-    def download(self, external_url: ExternalURL) -> HTTPResponse | None:
+    def download(
+            self,
+            external_url: ExternalURL,
+            params: dict | None = None,
+            headers: dict | None = None
+    ) -> HTTPResponse | None:
         file_path = self._get_file_path(external_url)
         
         if not file_path:
@@ -119,14 +132,21 @@ class External:
             url = external_url.url if not external_url.signed else external_url.signed,
             request_type = RequestType.DOWNLOAD,
             response_type = ResponseType.DOWNLOAD,
+            params = params,
+            headers = headers,
             payload = {
                 "destination": file_path
             }
         )
         
+        if file_path in self._database.duplicate_items:
+            return HTTPResponse(
+                request = request,
+                status_code = StatusCode.MARKED_DUPLICATE.value
+            )
+        
         return self._http_client.send(request)
         
-    
     def _get_file_path(self, external_url: ExternalURL) -> Path | None:
         url = external_url.url
         signed = external_url.signed

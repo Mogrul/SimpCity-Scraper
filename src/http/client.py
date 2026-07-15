@@ -1,13 +1,14 @@
 from dataclasses import asdict
 from http.cookiejar import MozillaCookieJar
 import logging
-import json
 from pathlib import Path
 import time
+import json
 
 import requests
 from requests.adapters import HTTPAdapter
 from bs4 import BeautifulSoup
+import brotli
 
 from src.shared import SingletonMeta, Config
 from .models import HTTPRequest, HTTPResponse, HTTPHeaders
@@ -19,18 +20,26 @@ class HTTPClient(metaclass = SingletonMeta):
         self._session = requests.session()
         self._config = Config()
         
+        self._loaded_cookies: set[str] = set()
+        
         self._load_adapter()
         self._load_headers()
         self._load_cookies()
     
     # Sending request and handling their responses
     def send(self, request: HTTPRequest) -> HTTPResponse:
+        # Goonbox cookie hook
+        if "goonbox.cr" not in self._loaded_cookies:
+            self._session.get(url = "https://goonbox.cr/api/auth/me")
+            self._loaded_cookies.add("goonbox.cr")
+        
         # Send the request
         if request.request_type == RequestType.GET:
             try:
                 response = self._session.get(
                     url = request.url,
-                    timeout = self._config.timeout
+                    timeout = self._config.timeout,
+                    params = request.params
                 )
             
             except TimeoutError:
@@ -43,7 +52,8 @@ class HTTPClient(metaclass = SingletonMeta):
             try:
                 response = self._session.post(
                     url = request.url,
-                    json = request.payload
+                    json = request.payload,
+                    params = request.params
                 )
             
             except TimeoutError:
@@ -53,7 +63,7 @@ class HTTPClient(metaclass = SingletonMeta):
         if response.status_code != 200:
             return self._on_error(request, response)
         
-        self._logger.info(f"{response.status_code}: Sent request to: {request.url}")
+        self._logger.info(f"{response.status_code}: Sent request to: {response.url}")
         
         match request.response_type:
             case ResponseType.TEXT:
@@ -64,6 +74,9 @@ class HTTPClient(metaclass = SingletonMeta):
             
             case ResponseType.DICT:
                 return self._on_dict(request, response)
+            
+            case ResponseType.HEADERS:
+                return self._on_headers(request, response)
             
             case _:
                 return self._on_error(request, response)
@@ -87,17 +100,26 @@ class HTTPClient(metaclass = SingletonMeta):
         )
     
     def _on_error(self, request: HTTPRequest, response: requests.Response) -> HTTPResponse:
-        self._logger.error(f"{response.status_code}: Error from {request.url}")
+        self._logger.error(f"{response.status_code}: Error from {response.url}")
+        
         return HTTPResponse(
             request,
             status_code = response.status_code,
-            data = response.text
+            data = response.text,
+            headers = dict(response.headers)
         )
     
     def _on_unresponsive_error(self, request: HTTPRequest) -> HTTPResponse:
         return HTTPResponse(
             request = request,
             status_code = 404
+        )
+    
+    def _on_headers(self, request: HTTPRequest, response: requests.Response) -> HTTPResponse:
+        return HTTPResponse(
+            request = request,
+            status_code = response.status_code,
+            data = dict(response.headers)
         )
     
     def _on_text(self, request: HTTPRequest, response: requests.Response) -> HTTPResponse:
@@ -122,10 +144,17 @@ class HTTPClient(metaclass = SingletonMeta):
     
     def _on_dict(self, request: HTTPRequest, response: requests.Response) -> HTTPResponse:
         try:
-            data = json.dumps(response.text)
-        
-        except TypeError:
-            return self._on_error(request, response)
+            data = response.json()
+
+        except ValueError:
+            # Try and uncompress br format
+            try:
+                data = json.loads(
+                    brotli.decompress(response.content)
+                )
+            
+            except (ValueError, brotli.error):
+                return self._on_error(request, response)
         
         return HTTPResponse(
             request = request,
@@ -163,6 +192,10 @@ class HTTPClient(metaclass = SingletonMeta):
         if downloaded_bytes:
             headers["Range"] = f"bytes={downloaded_bytes}"
         
+        if request.headers:
+            for key, value in request.headers.items():
+                headers[key] = value
+        
         # Create the parent directory
         destination.parent.mkdir(parents = True, exist_ok = True)
         
@@ -170,7 +203,8 @@ class HTTPClient(metaclass = SingletonMeta):
         with self._session.get(
                 url = request.url,
                 headers = headers,
-                timeout = self._config.timeout
+                timeout = self._config.timeout,
+                params = request.params
         ) as response:
             
             # Rejected resume request

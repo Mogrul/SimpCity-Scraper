@@ -4,6 +4,7 @@ from pathlib import Path
 
 from src.shared import load_logger, Config
 from src.simpcity.simpcity import SimpCity
+from src.database.database import Database
 
 def check_paths():
     logger = logging.getLogger("integrity")
@@ -32,6 +33,9 @@ if __name__ == "__main__":
     if not success:
         logger.critical("Failed to read config, exiting...")
         os._exit(0)
+    
+    db = Database()
+    db.load_duplicates()
     
     ss = SimpCity()
     ss.run()

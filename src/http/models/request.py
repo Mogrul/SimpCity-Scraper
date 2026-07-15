@@ -8,3 +8,5 @@ class HTTPRequest:
     request_type: RequestType
     response_type: ResponseType
     payload: dict | None = None
+    params: dict | None = None
+    headers: dict | None = None
