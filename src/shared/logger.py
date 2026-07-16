@@ -24,7 +24,7 @@ class ConsoleFormatter(logging.Formatter):
         time_str = f"{self.TIME}{time}{self.RESET}"
         level_str = f"{self.LEVEL}{level:<8}{self.RESET}"
         name_str = f"{self.NAME}{name.upper():<16}{self.RESET}"
-        thread_str = f"{self.NAME}{thread:<20}{self.RESET}"
+        thread_str = f"{self.NAME}{thread:^20}{self.RESET}"
         end_str = f"{self.RED}>>{self.RESET}"
         msg_str = re.sub(
             r"\*(.*?)\*",

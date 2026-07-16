@@ -64,7 +64,7 @@ class ThreadScraper:
         
         # Recurse through pages using a thread pool
         if max_page_num != 1:
-            with ThreadPoolExecutor(self._config.workers, "simpcity.thread.thread") as executor:
+            with ThreadPoolExecutor(self._config.network.workers, "simpcity.thread.thread") as executor:
                 futures = [
                     executor.submit(self._scrape_page, url, page_num)
                     for page_num in range(2, max_page_num + 1)

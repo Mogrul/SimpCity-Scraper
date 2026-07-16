@@ -1,0 +1,27 @@
+# Configs related to duplication checker
+[duplication]
+# Disable / Enable checking for image, video duplicates
+videos = false # ffmpeg + cuda only -- system intensive
+images = true
+samples = 3 # Amount of samples to check video duplicates against
+threshold = 0.9 # Similarity percentage to delete at, 0.1 = 10%
+
+# Configs related to scrapers
+[scraper]
+download_location = "Downloads" # Base location where downloads will go
+extractor_location = "C:\\Program Files\\7-Zip\\7z.exe" # 7z.exe location, for extraction
+skip_scrapers = [] # List of domain names to skip "bunkr.cr", "goonbox.cr"
+extract_files = false # Whether to extract files using extractor
+
+# Configs related to network requests and threading
+[network]
+workers = 10 # Amount of concurrent threads
+timeout = 10 # Time in seconds before idle connection breaks
+chunk_size = 1048576 # Chunk size in bytes to download at
+cookie_path = ".cookies" # Root path where cookies.txt files are stored
+
+[network.headers]
+User-Agent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/150.0.0.0 Safari/537.36"
+Accept = "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8"
+Accept-Encoding = "gzip, deflate, br, zstd"
+Connection = "keep-alive"

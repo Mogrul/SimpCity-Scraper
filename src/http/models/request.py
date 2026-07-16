@@ -10,3 +10,4 @@ class HTTPRequest:
     payload: dict | None = None
     params: dict | None = None
     headers: dict | None = None
+    delay: int = 0

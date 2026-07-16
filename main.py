@@ -1,42 +1,19 @@
-import os
-import logging
-from pathlib import Path
-
-from src.shared import load_logger, Config
+from src.shared import load_logger, Config, args
 from src.simpcity.simpcity import SimpCity
 from src.database.database import Database
-
-def check_paths():
-    logger = logging.getLogger("integrity")
-    
-    # Config file
-    c = Config()
-    if not c.exists():
-        c.generate()
-        logger.critical(f"No config.json found - edit the newly generated one and restart the program.")
-        os._exit(0)
-    
-    # Cookies path
-    cookie_path = Path(".cookies")
-    if not cookie_path.exists():
-        cookie_path.mkdir(parents = True, exist_ok = True)
-        logger.critical(f"No .cookies folder found, add your netscape simpcity.txt cookies to the newly generated folder and restart the program.")
-        os._exit(0)
+from src.http.client import HTTPClient
 
 if __name__ == "__main__":
     logger = load_logger()
-    check_paths()
     
     c = Config()
-    success = c.load()
-        
-    if not success:
-        logger.critical("Failed to read config, exiting...")
-        os._exit(0)
+    c.load_config()
     
     db = Database()
     db.load_duplicates()
     db.load_extracted()
+    
+    client = HTTPClient()
     
     ss = SimpCity()
     ss.run()

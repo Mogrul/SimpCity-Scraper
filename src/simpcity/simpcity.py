@@ -46,7 +46,7 @@ class SimpCity:
             
             tag_path = (thread.tags[0],) if thread.tags else ()
             user_path = Path(
-                self._config.download_location,
+                self._config.scraper.download_location,
                 *tag_path,
                 thread.username
             )
@@ -59,7 +59,10 @@ class SimpCity:
             self._cleanup(user_path)
             
             # Check for duplicates
-            if self._config.check_duplicates:
+            if (
+                    self._config.duplication.images
+                    or self._config.duplication.videos
+            ):
                 duplication = Duplication()
                 duplication.check_duplicates(user_path)
             
@@ -125,7 +128,7 @@ class SimpCity:
                     self._logger.critical(f"Domain {domain} not found in externals")
                     continue
                 
-                if domain in self._config.skip_scrapers:
+                if domain in self._config.scraper.skip_scrapers:
                     continue
                 
                 futures.append(executor.submit(

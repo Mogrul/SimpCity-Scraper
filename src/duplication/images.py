@@ -6,6 +6,7 @@ from PIL import Image
 import imagehash
 from imagehash import ImageHash
 
+from .models import ToDelete
 from src.database.database import Database
 from src.database.models import DuplicateItem
 from src.shared import Config
@@ -15,11 +16,11 @@ class ImageDuplication:
         self._logger = logging.getLogger("duplication.images")
         self._config = Config()
         self._images_path = images_path
-        self._max_pending = self._config.workers * 4
+        self._max_pending = self._config.network.workers * 4
         self._database = Database()
         
         self._hashes: dict[Path, ImageHash] = {}
-        self._to_delete: list[dict[str, Path | float]] = []
+        self._to_delete: list[ToDelete] = []
     
     def run(self):
         # Hash all images
@@ -34,7 +35,7 @@ class ImageDuplication:
         self.compare_images()
         
         if not self._to_delete:
-            self._logger.info(f"No duplicate images found")
+            self._logger.warning(f"No duplicate images found")
             return
         
         else:
@@ -47,7 +48,7 @@ class ImageDuplication:
         path = self._images_path
         
         if not path.exists():
-            self._logger.error(f"Path doesn't exist: {path}")
+            self._logger.warning(f"Path doesn't exist: {path}")
             return
         
         images = [
@@ -56,14 +57,14 @@ class ImageDuplication:
         ]
         
         if not images:
-            self._logger.error(f"No images found in {path}")
+            self._logger.warning(f"No images found in {path}")
             return
         
         # Hash the images with a thread pool.
         errored = 0
         complete = 0
         with ThreadPoolExecutor(
-                self._config.workers,
+                self._config.network.workers,
                 "duplication.images.hashing"
         ) as executor:
             futures = [
@@ -99,8 +100,8 @@ class ImageDuplication:
         images = list(self._hashes.items())
         completed_images = set()
         with ThreadPoolExecutor(
-            max_workers=self._config.workers,
-            thread_name_prefix="duplication.images.comparing"
+                max_workers = self._config.network.workers,
+                thread_name_prefix = "duplication.images.comparing"
         ) as executor:
             for index, result in executor.map(
                 lambda args: self._compare_image_pairs(*args),
@@ -124,14 +125,9 @@ class ImageDuplication:
         saved_bytes = 0
         
         for to_delete in self._to_delete:
-            img_1 = to_delete.get("img_1")
-            img_2 = to_delete.get("img_2")
-            
-            if (
-                not isinstance(img_1, Path)
-                or not isinstance(img_2, Path)
-            ):
-                continue
+            img_1 = to_delete.file_1
+            img_2 = to_delete.file_2
+            similarity = to_delete.similarity
             
             try:
                 img_1_size = img_1.stat().st_size
@@ -140,28 +136,17 @@ class ImageDuplication:
             except FileNotFoundError:
                 continue
             
-            similarity = to_delete.get("similarity")
-            
-            if not isinstance(similarity, float):
-                continue
-            
             if img_1_size > img_2_size:
-                # Delete image 2
-                img_2.unlink()
-                saved_bytes += img_2_size
-                deleted = img_2
-                deleted_size = img_2_size
-                kept = img_1
-                kept_size = img_1_size
-            
+                kept, kept_size = img_1, img_1_size
+                deleted, deleted_size = img_2, img_2_size
+                
             else:
-                # Delete image 1
-                img_1.unlink()
-                saved_bytes += img_1_size
-                deleted = img_1
-                deleted_size = img_1_size
-                kept = img_2
-                kept_size = img_2_size
+                kept, kept_size = img_2, img_2_size
+                deleted, deleted_size = img_1, img_1_size
+            
+            # Delete smallest file
+            deleted.unlink()
+            saved_bytes += deleted_size
             
             duplicate_item = DuplicateItem(
                 kept_path = kept,
@@ -201,7 +186,7 @@ class ImageDuplication:
     def _hash_image(self, path: Path) -> tuple[Path, ImageHash] | None:
         try:
             with Image.open(path) as img:
-                img_hash = imagehash.phash(img)
+                img_hash = imagehash.phash(img, hash_size = 4)
             
             return (path, img_hash)
         
@@ -215,20 +200,21 @@ class ImageDuplication:
             hash_1: ImageHash,
             img_2: Path,
             hash_2: ImageHash
-    ) -> tuple[int, dict | None]:
+    ) -> tuple[int, ToDelete | None]:
+        hash_size = hash_1.hash.size
         similarty = (
             1 - ((
                 hash_1 - hash_2
-            ) / 64)
+            ) / hash_size)
         )
         
         result = None
-        if similarty >= self._config.check_duplicate_threshold:
-            result =  {
-                "img_1": img_1,
-                "img_2": img_2,
-                "similarity": similarty
-            }
+        if similarty >= self._config.duplication.threshold:
+            result = ToDelete(
+                file_1 = img_1,
+                file_2 = img_2,
+                similarity = similarty
+            )
         
         return index, result
     

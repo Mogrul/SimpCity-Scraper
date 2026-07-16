@@ -1,4 +1,5 @@
 import argparse
+import os
 
 def get_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
@@ -7,9 +8,22 @@ def get_args() -> argparse.Namespace:
     
     parser.add_argument(
         "urls",
-        nargs = "+",
+        nargs = "*",
         metavar = "URLs",
         help = "SimpCity URLs"
     )
     
-    return parser.parse_args()
+    parser.add_argument(
+        "-c", "--config",
+        action = "store_true",
+        help = "Retrieves config values"
+    )
+    
+    args = parser.parse_args()
+    
+    if not args.config and not args.urls:
+        parser.error("Invalid arguments, do --help")
+        os.abort()
+    
+    return args
+    

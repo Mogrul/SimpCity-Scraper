@@ -1,28 +1,24 @@
 import logging
 from pathlib import Path
-from threading import Lock
-from concurrent.futures import ThreadPoolExecutor, as_completed
-
-from PIL import Image
-import imagehash
 
 from src.shared import Config
 from .images import ImageDuplication
+from .videos import VideoDuplication
 
 class Duplication():
     def __init__(self):
         self._logger = logging.getLogger("duplication")
         self._config = Config()
-        
-        self._image_hashes: dict[Path, imagehash.ImageHash] = {}
-        self._image_deleted: set[Path] = set()
-        self._image_deleted_lock = Lock()
     
     def check_duplicates(self, path: Path):
         if not path.exists():
             self._logger.error(f"Path doesn't exist: {path}")
             return
         
-        image_duplication = ImageDuplication(path)
-        image_duplication.run()
+        if self._config.duplication.images:
+            image_duplication = ImageDuplication(path)
+            image_duplication.run()
         
+        if self._config.duplication.videos:
+            video_duplication = VideoDuplication(path)
+            video_duplication.run()

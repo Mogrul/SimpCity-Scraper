@@ -38,7 +38,7 @@ class HTTPClient(metaclass = SingletonMeta):
             try:
                 response = self._session.get(
                     url = request.url,
-                    timeout = self._config.timeout,
+                    timeout = self._config.network.timeout,
                     params = request.params
                 )
             
@@ -58,6 +58,10 @@ class HTTPClient(metaclass = SingletonMeta):
             
             except TimeoutError:
                 return self._on_timeout(request)
+        
+        # Handle delay
+        if request.delay != 0:
+            time.sleep(request.delay)
         
         # Handle status codes
         if response.status_code != 200:
@@ -183,7 +187,7 @@ class HTTPClient(metaclass = SingletonMeta):
                 status_code = StatusCode.DUPLICATE_DOWNLOAD.value
             )
         
-        chunk_size = self._config.chunk_size
+        chunk_size = self._config.network.chunk_size
         
         # Handle resuming
         temp_destination = destination.with_suffix(destination.suffix + ".temp")
@@ -207,7 +211,7 @@ class HTTPClient(metaclass = SingletonMeta):
         with self._session.get(
                 url = request.url,
                 headers = headers,
-                timeout = self._config.timeout,
+                timeout = self._config.network.timeout,
                 params = request.params
         ) as response:
             
@@ -247,11 +251,8 @@ class HTTPClient(metaclass = SingletonMeta):
     # Loading functions
     def _load_cookies(self):
         """Loads all the cookie text files in a cookie path.
-
-        Args:
-            cookie_path (Path): The path to scan for immediate text files.
-        """
-        cookie_path = self._config.cookie_path
+        """        
+        cookie_path = self._config.network.cookie_path
         
         if not cookie_path.exists():
             self._logger.error(f"Failed to locate {cookie_path}")
@@ -278,7 +279,7 @@ class HTTPClient(metaclass = SingletonMeta):
         self._session.mount("https://", adapter)
     
     def _load_headers(self):
-        headers = self._config.headers
+        headers = self._config.network.headers
         if not headers:
             return
         

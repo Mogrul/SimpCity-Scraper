@@ -57,7 +57,7 @@ class External:
         failed = 0
         
         with ThreadPoolExecutor(
-            max_workers = self._config.workers,
+            max_workers = self._config.network.workers,
             thread_name_prefix = self._thread_prefix
         ) as executor:
             futures = [
@@ -120,27 +120,28 @@ class External:
                     downloaded += 1
                     
                     # Attempt extraction
-                    for extract_response in self._attempt_extraction(
-                            post_id,
-                            response,
-                            destination
-                    ):
-                        if not extract_response.status_code == StatusCode.EXTRACTED.value:
-                            continue
-                        
-                        if not isinstance(extract_response.data, dict):
-                            continue
-                        
-                        extract_destination = extract_response.data.get("destination", Path)
-                        extract_file_size = extract_response.data.get("file_size", 0)
-                        
-                        self._logger.info(
-                            f"{self._format_bytes(extract_file_size):<10}"
-                            f"{'':^10}"
-                            f"Extracted: {extract_destination}"
-                        )
-                        
-                        extracted += 1
+                    if self._config.scraper.extract_files:
+                        for extract_response in self._attempt_extraction(
+                                post_id,
+                                response,
+                                destination
+                        ):
+                            if not extract_response.status_code == StatusCode.EXTRACTED.value:
+                                continue
+                            
+                            if not isinstance(extract_response.data, dict):
+                                continue
+                            
+                            extract_destination = extract_response.data.get("destination", Path)
+                            extract_file_size = extract_response.data.get("file_size", 0)
+                            
+                            self._logger.info(
+                                f"{self._format_bytes(extract_file_size):<10}"
+                                f"{'':^10}"
+                                f"Extracted: {extract_destination}"
+                            )
+                            
+                            extracted += 1
         
         return DomainStats(
             marked_extracted,
@@ -212,7 +213,7 @@ class External:
         signed = external_url.signed
         tags = self._thread.tags
         username = self._thread.username
-        base_path = self._config.download_location
+        base_path = self._config.scraper.download_location
         posted = post.posted
         
         if "?" in url:
@@ -299,7 +300,7 @@ class External:
         tag_path = (tags[0],) if tags else ()
         
         temp_path = Path(
-            self._config.download_location,
+            self._config.scraper.download_location,
             *tag_path,
             username,
             "temp"
@@ -307,7 +308,7 @@ class External:
         
         result = subprocess.run(
             [
-                str(self._config.zip_path),
+                str(self._config.scraper.extractor_location),
                 "x",
                 str(destination),
                 f"-o{temp_path}",
