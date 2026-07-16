@@ -10,19 +10,6 @@ from config import Config
 from enums import RequestType, ResponseType, StatusCode
 from models import Request, Response, DownloadRequest, DownloadResponse
 
-
-def _on_timeout(request: Request) -> Response:
-    return Response(
-        request = request,
-        status_code = StatusCode.TIMEOUT
-    )
-
-def _on_error(request: Request, response: requests.Response) -> Response:
-    return Response(
-        request = request,
-        status_code = StatusCode.FAILED
-    )
-
 class Session:
     _instance = None
 
@@ -56,12 +43,13 @@ class Session:
                     url = request.link,
                     params = request.params
                 )
+
         except TimeoutError:
-            return _on_timeout(request)
+            return self._on_timeout(request)
 
         # Handle response
         if response.status_code != 200:
-            return _on_error(request, response)
+            return self._on_error(request)
 
         try:
             # Send response as specified by type
@@ -75,7 +63,7 @@ class Session:
                 )
 
             elif request.response_type == ResponseType.DICT:
-                data = json.loads(response.text)
+                data = response.json()
 
                 return Response(
                     request = request,
@@ -90,8 +78,9 @@ class Session:
                     data = response.text
                 )
 
-        except (ValueError, TypeError, json.decoder.JSONDecodeError):
-            return _on_error(request, response)
+        except (ValueError, TypeError, json.decoder.JSONDecodeError) as e:
+            self.logger.error(f"Error: {request.link} {e}")
+            return self._on_error(request)
 
     def download(self, request: DownloadRequest) -> DownloadResponse:
         # Handle download resuming
@@ -167,3 +156,16 @@ class Session:
 
     def load_headers(self):
         self.session.headers.update(self.config.headers)
+
+    def _on_timeout(self, request: Request) -> Response:
+        self.logger.error(f"Timed out: {request}")
+        return Response(
+            request=request,
+            status_code=StatusCode.TIMEOUT
+        )
+
+    def _on_error(self, request: Request) -> Response:
+        return Response(
+            request=request,
+            status_code=StatusCode.FAILED
+        )
