@@ -1,10 +1,15 @@
 [downloads]
-location = "Downloads"
+location = "Downloads" # Location to where the downloads will go
+
+[database]
+enabled = true # Disable / Enable the database functionality
+location = "data/data.db" # Location where the database will be generated
+save_completed = true # To avoid sending requests for downloads already downloaded
 
 [network]
-timeout = 10
-chunk_size = 1048576
-cookies = ".cookies"
+timeout = 10 # Time in seconds before a request times out
+chunk_size = 1048576 # Chunk size in bytes to download at
+cookies = ".cookies" # Folder where cookies.txt files are located
 
 [network.headers]
 User-Agent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/150.0.0.0 Safari/537.36"

@@ -18,8 +18,7 @@ class GoonBox(Domain):
         responses = []
 
         if "/img/" in link.link:
-            #responses.append(self.file(post, link))
-            pass
+            responses.append(self.file(post, link))
 
         else:
             responses.extend(self.album(post, link))

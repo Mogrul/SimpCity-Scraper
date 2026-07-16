@@ -1,8 +1,10 @@
 import logging
+from concurrent.futures import ThreadPoolExecutor, as_completed, Future
 from pathlib import Path
 from uuid import uuid5, NAMESPACE_URL
 
 from config import Config
+from database import Database
 from enums import StatusCode
 from models import Post, Link, DownloadResponse, DownloadRequest, Thread, DomainResult
 from session import Session
@@ -28,53 +30,97 @@ class Domain:
         self.config = Config()
         self.session = Session()
 
+        if self.config.database.enabled:
+            self.database = Database()
+
     def run(self) -> DomainResult:
         downloaded = 0
         failed = 0
         duplicate = 0
 
-        for link in self.links:
-            post = self.posts[link.post_id]
+        links_to_download = []
 
-            if not post:
-                self.logger.warning(f"Failed to get post from ID: {link.post_id}")
-                continue
+        # Check links against completed in database if enabled
+        if self.database:
+            skipped = 0
+            for link in self.links:
+                if not link.link in self.database.completed:
+                    links_to_download.append(link)
+                else:
+                    skipped += 1
 
-            responses = self.on_submission(post, link)
+            self.logger.info(f"Skipped {skipped} downloads (database)")
 
-            for response in responses:
-                # Handle status codes
-                if response.status_code in (
-                    StatusCode.FAILED,
-                    StatusCode.FAILED_PATH
-                ):
+        else:
+            links_to_download = self.links
+
+        with ThreadPoolExecutor(
+            max_workers = self.config.thread_count,
+            thread_name_prefix = self.thread_prefix
+        ) as executor:
+            futures: dict[Future, Link] = {}
+
+            for link in links_to_download:
+                post = self.posts[link.post_id]
+
+                if not post:
+                    self.logger.warning(f"Failed to get post from ID: {link.post_id}")
+                    continue
+
+                futures[executor.submit(self.on_submission, post, link)] = link
+
+            # Handle futures completing
+            for future in as_completed(futures.keys()):
+                link = futures[future]
+
+                try:
+                    responses = future.result()
+
+                except Exception as e:
+                    self.logger.error(f"{link.link} failed: {e}")
                     failed += 1
                     continue
 
-                if response.status_code == StatusCode.FAILED_EXISTS:
-                    duplicate += 1
-                    continue
-
-                file_size = response.file_size
-                time_taken = response.time_taken
-                request = response.request
-
-                if (
-                    not file_size
-                    or not time_taken
-                    or not request
-                ):
-                    self.logger.error(f"Failed to download file from ID: {link.post_id}")
+                if not responses:
                     failed += 1
                     continue
 
-                destination = request.destination
-                self.logger.info(
-                    f"{format_bytes(file_size):<10}"
-                    f"{format_duration(time_taken):^10}"
-                    f"Downloaded: {destination}"
-                )
-                downloaded += 1
+                if self.database:
+                    self.database.add_completed(link.link)
+
+                for response in responses:
+                    # Handle status codes
+                    if response.status_code in (
+                            StatusCode.FAILED,
+                            StatusCode.FAILED_PATH
+                    ):
+                        failed += 1
+                        continue
+
+                    if response.status_code == StatusCode.FAILED_EXISTS:
+                        duplicate += 1
+                        continue
+
+                    file_size = response.file_size
+                    time_taken = response.time_taken
+                    request = response.request
+
+                    if (
+                            not file_size
+                            or not time_taken
+                            or not request
+                    ):
+                        self.logger.error(f"Failed to download file from ID: {link.post_id}")
+                        failed += 1
+                        continue
+
+                    destination = request.destination
+                    self.logger.info(
+                        f"{format_bytes(file_size):<10}"
+                        f"{format_duration(time_taken):^10}"
+                        f"Downloaded: {destination}"
+                    )
+                    downloaded += 1
 
         return DomainResult(
             downloaded = downloaded,

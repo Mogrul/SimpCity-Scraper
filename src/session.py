@@ -20,8 +20,9 @@ class Session:
         return cls._instance
 
     def __init__(self):
-        if getattr(self, "_session", None):
+        if getattr(self, "_initialised", False):
             return
+        self._initialised = True
 
         self.session = requests.Session()
         self.logger = logging.getLogger("session")

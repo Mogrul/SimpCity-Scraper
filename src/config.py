@@ -3,7 +3,7 @@ import tomllib
 import os
 from pathlib import Path
 
-from models import Network, Downloads
+from models import NetworkConfig, DownloadConfig, DatabaseConfig
 
 
 def load_args() -> argparse.Namespace:
@@ -41,15 +41,21 @@ class Config:
         )
         self.links: list[str] = []
 
-        self.network = Network(
+        self.network = NetworkConfig(
             timeout = 10,
             chunk_size = 1048576,
             cookies = Path(".cookies"),
             headers = {}
         )
 
-        self.downloads = Downloads(
+        self.downloads = DownloadConfig(
             location = Path("Downloads"),
+        )
+
+        self.database = DatabaseConfig(
+            enabled = True,
+            location = Path("data/data.db"),
+            save_completed = True
         )
 
     def load_config(self, config_path = Path('config.toml')):
@@ -72,17 +78,29 @@ class Config:
             "Connection": "keep-alive"
         })
 
+        # Database configs
+        database = data.get("database", {})
+        enabled = database.get("enabled", True)
+        location = database.get("location", "data/data.db")
+        save_completed = database.get("save_completed", True)
+
         # Arg configs
         args = load_args()
         self.links = args.links
 
-        self.network = Network(
+        self.network = NetworkConfig(
             timeout = network_timeout,
             chunk_size = network_chunk_size,
             cookies = Path(network_cookies),
             headers = network_headers
         )
 
-        self.downloads = Downloads(
+        self.downloads = DownloadConfig(
             location = Path(download_location),
+        )
+
+        self.database = DatabaseConfig(
+            enabled = enabled,
+            location = Path(location),
+            save_completed = save_completed
         )

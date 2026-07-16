@@ -47,17 +47,22 @@ class DomainResult:
 
         return self
 
-
 @dataclass
-class Downloads:
+class DownloadConfig:
     location: Path
 
 @dataclass
-class Network:
+class NetworkConfig:
     timeout: int
     chunk_size: int
     cookies: Path
     headers: dict = field(default_factory = dict)
+
+@dataclass
+class DatabaseConfig:
+    enabled: bool
+    location: Path
+    save_completed: bool
 
 @dataclass
 class Thread:
