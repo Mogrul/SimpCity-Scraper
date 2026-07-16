@@ -1,4 +1,4 @@
-from src.shared import load_logger, Config, args
+from src.shared import load_logger, Config
 from src.simpcity.simpcity import SimpCity
 from src.database.database import Database
 from src.http.client import HTTPClient
