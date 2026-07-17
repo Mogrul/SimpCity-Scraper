@@ -111,6 +111,8 @@ def get_posts(page: BeautifulSoup) -> tuple[dict[int, Post], list[Link]] | None:
                     encoded + "=" * (-len(encoded) % 4)
                 ).decode("utf-8")
                 href = decoded
+                parsed = urlparse(href)
+                domain = parsed.netloc
 
             cell_links.append(Link(post_id, href, domain, signed))
 
