@@ -188,7 +188,7 @@ class Domain:
 
         file_path = Path(
             f"[{post.date.year}-{post.date.month:02d}-{post.date.day:02d}] "
-            f"{file_id}.{original_file_path.suffix}"
+            f"{file_id}{original_file_path.suffix}"
         )
 
         return thread_path / post_path / file_path
