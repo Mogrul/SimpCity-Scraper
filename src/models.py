@@ -35,19 +35,6 @@ class DownloadResponse:
     file_size: int | None = None
 
 @dataclass
-class DomainResult:
-    downloaded: int
-    duplicate: int
-    failed: int
-
-    def __iadd__(self, other: "DomainResult") -> DomainResult:
-        self.downloaded += other.downloaded
-        self.duplicate += other.duplicate
-        self.failed += other.failed
-
-        return self
-
-@dataclass
 class DownloadConfig:
     location: Path
 
@@ -82,3 +69,17 @@ class Link:
     domain: str
     signed: str | None = None
     filename: str | None = None
+
+@dataclass
+class DomainResult:
+    downloaded: int
+    duplicate: int
+    failed: int
+    completed_links: dict[str, list[DownloadResponse]] = field(default_factory = dict)
+
+    def __iadd__(self, other: "DomainResult") -> DomainResult:
+        self.downloaded += other.downloaded
+        self.duplicate += other.duplicate
+        self.failed += other.failed
+
+        return self

@@ -275,4 +275,12 @@ class Scraper:
                 self.domain_results[domain] = domain_result
 
     def log_results(self):
-        pass
+        for domain, result in self.domain_results.items():
+            total = result.downloaded + result.failed + result.duplicate
+
+            self.logger.info(
+                f"{domain}:\n"
+                f"          {'Downloaded':<20}{f'{result.downloaded}/{total}':>15}\n"
+                f"          {'Duplicate':<20}{f'{result.duplicate}/{total}':>15}\n"
+                f"          {'Failed':<20}{f'{result.failed}/{total}':>15}"
+            )

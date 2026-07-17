@@ -1,4 +1,5 @@
 import logging
+from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor, as_completed, Future
 from pathlib import Path
 from uuid import uuid5, NAMESPACE_URL
@@ -48,11 +49,15 @@ class Domain:
                     links_to_download.append(link)
                 else:
                     skipped += 1
+                    duplicate += 1
 
-            self.logger.info(f"Skipped {skipped} downloads (database)")
+            self.logger.info(f"Skipped {skipped}/{len(self.links)} downloads (database)")
 
         else:
             links_to_download = self.links
+
+        # Store completed downloads [url -> list[Downloads]]
+        completed_links: dict[str, list[DownloadResponse]] = defaultdict(list)
 
         with ThreadPoolExecutor(
             max_workers = self.config.thread_count,
@@ -115,6 +120,7 @@ class Domain:
                         continue
 
                     destination = request.destination
+                    completed_links[link].append(destination)
                     self.logger.info(
                         f"{format_bytes(file_size):<10}"
                         f"{format_duration(time_taken):^10}"
@@ -126,6 +132,7 @@ class Domain:
             downloaded = downloaded,
             duplicate = duplicate,
             failed = failed,
+            completed_links = completed_links
         )
 
     def on_submission(self, post: Post, link: Link) -> list[DownloadResponse]:
