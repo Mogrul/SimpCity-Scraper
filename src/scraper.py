@@ -2,12 +2,14 @@ import base64
 from collections import defaultdict
 from datetime import datetime, timezone
 import logging
+from pathlib import Path
 from urllib.parse import urlparse, unquote, parse_qs
 
 from bs4 import BeautifulSoup, Tag
 
 from config import Config
 from domains import DOMAINS
+from duplication import Duplication
 from enums import RequestType, ResponseType
 from models import Request, Thread, Link, Post, DomainResult
 from session import Session
@@ -229,7 +231,22 @@ class Scraper:
                     posts[key] = value
 
             self.logger.info(f"Found {len(posts)} posts, {len(links)} links in {thread_link}")
-            self.pass_to_domains(thread, posts, links)
+            completed_links = self.pass_to_domains(thread, posts, links)
+
+            # Build thread path to check for duplicates if enabled
+            if (
+                self.config.duplication.images
+                or self.config.duplication.videos
+            ):
+                tag_path = (thread.tags[0],) if thread.tags else ()
+                thread_path = Path(
+                    self.config.downloads.location,
+                    *tag_path,
+                    thread.username
+                )
+                duplication = Duplication()
+                if self.config.duplication.images:
+                    duplication.check_images(thread_path, completed_links)
 
         # Log the finished domain results
         self.log_results()
@@ -243,8 +260,14 @@ class Scraper:
 
         return response.data
 
-    def pass_to_domains(self, thread: Thread, posts: dict[int, Post], links: list[Link]):
+    def pass_to_domains(
+            self,
+            thread: Thread,
+            posts: dict[int, Post],
+            links: list[Link]
+    ) -> dict[Path, str]:
         link_map: dict[str, list[Link]] = defaultdict(list) # domain -> list[link]
+        completed_links: dict[Path, str] = {}
 
         # Sort links by their domain
         for link in links:
@@ -262,10 +285,13 @@ class Scraper:
 
             if not domain_cls:
                 self.logger.error(f"Failed to find domain for {domain}")
-                return
+                return completed_links
 
             domain_cls = domain_cls(posts, links, thread)
             domain_result = domain_cls.run()
+
+            for key, value in domain_result.completed_links.items():
+                completed_links[key] = value
 
             # Collect results
             if domain in self.domain_results:
@@ -273,6 +299,8 @@ class Scraper:
 
             else:
                 self.domain_results[domain] = domain_result
+
+        return completed_links
 
     def log_results(self):
         for domain, result in self.domain_results.items():

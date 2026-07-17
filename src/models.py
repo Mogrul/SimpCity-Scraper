@@ -46,6 +46,14 @@ class NetworkConfig:
     headers: dict = field(default_factory = dict)
 
 @dataclass
+class DuplicationConfig:
+    images: bool
+    videos: bool
+    ffmpeg_path: Path
+    ffprobe_path: Path
+    threshold: float
+
+@dataclass
 class DatabaseConfig:
     enabled: bool
     location: Path
@@ -74,7 +82,7 @@ class DomainResult:
     downloaded: int
     duplicate: int
     failed: int
-    completed_links: dict[str, list[DownloadResponse]] = field(default_factory = dict)
+    completed_links: dict[Path, str] = field(default_factory = dict)
 
     def __iadd__(self, other: "DomainResult") -> DomainResult:
         self.downloaded += other.downloaded
@@ -82,3 +90,8 @@ class DomainResult:
         self.failed += other.failed
 
         return self
+
+@dataclass
+class MarkedDelete:
+    file1: Path
+    file2: Path

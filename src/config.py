@@ -3,7 +3,7 @@ import tomllib
 import os
 from pathlib import Path
 
-from models import NetworkConfig, DownloadConfig, DatabaseConfig
+from models import NetworkConfig, DownloadConfig, DatabaseConfig, DuplicationConfig
 
 
 def load_args() -> argparse.Namespace:
@@ -57,6 +57,14 @@ class Config:
             location = Path("data/data.db"),
         )
 
+        self.duplication = DuplicationConfig(
+            images = True,
+            videos = True,
+            ffmpeg_path = Path("C:\\ffmpeg\\bin\\ffmpeg.exe"),
+            ffprobe_path = Path("C:\\ffmpeg\\bin\\ffprobe.exe"),
+            threshold = 0.9
+        )
+
     def load_config(self, config_path = Path('config.toml')):
         with open(config_path, "rb") as f:
             data = tomllib.load(f)
@@ -82,6 +90,14 @@ class Config:
         enabled = database.get("enabled", True)
         location = database.get("location", "data/data.db")
 
+        # Duplication configs
+        duplication = data.get("duplication", {})
+        images = duplication.get("images", True)
+        videos = duplication.get("videos", True)
+        ffmpeg_path = duplication.get("ffmpeg_path", "C:\\ffmpeg\\bin\\ffmpeg.exe")
+        ffprobe_path = duplication.get("ffprobe_path", "C:\\ffmpeg\\bin\\ffprobe.exe")
+        threshold = duplication.get("threshold", 0.9)
+
         # Arg configs
         args = load_args()
         self.links = args.links
@@ -100,4 +116,12 @@ class Config:
         self.database = DatabaseConfig(
             enabled = enabled,
             location = Path(location)
+        )
+
+        self.duplication = DuplicationConfig(
+            images = images,
+            videos = videos,
+            ffmpeg_path = ffmpeg_path,
+            ffprobe_path = ffprobe_path,
+            threshold = threshold
         )

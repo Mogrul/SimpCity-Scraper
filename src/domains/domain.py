@@ -45,19 +45,22 @@ class Domain:
         if self.database:
             skipped = 0
             for link in self.links:
-                if not link.link in self.database.completed:
-                    links_to_download.append(link)
-                else:
+                if (
+                    link.link in self.database.completed
+                    or link.link in self.database.duplicates
+                ):
                     skipped += 1
                     duplicate += 1
+                else:
+                    links_to_download.append(link)
 
             self.logger.info(f"Skipped {skipped}/{len(self.links)} downloads (database)")
 
         else:
             links_to_download = self.links
 
-        # Store completed downloads [url -> list[Downloads]]
-        completed_links: dict[str, list[DownloadResponse]] = defaultdict(list)
+        # Store completed downloads Path -> URL
+        completed_links: dict[Path, str] = {}
 
         with ThreadPoolExecutor(
             max_workers = self.config.thread_count,
@@ -120,7 +123,7 @@ class Domain:
                         continue
 
                     destination = request.destination
-                    completed_links[link].append(destination)
+                    completed_links[destination] = link.link
                     self.logger.info(
                         f"{format_bytes(file_size):<10}"
                         f"{format_duration(time_taken):^10}"

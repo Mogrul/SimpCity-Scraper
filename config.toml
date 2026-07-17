@@ -5,6 +5,13 @@ location = "Downloads" # Location to where the downloads will go
 enabled = true # Disable / Enable the database functionality
 location = "data/data.db" # Location where the database will be generated
 
+[duplication]
+images = true # To check for duplicate images
+videos = true # To check for duplicate videos -- intensive
+threshold = 0.9 # Threshold to mark files as duplicate: 0.1 = 10% similarity
+ffmpeg_path = "C:\\ffmpeg\\bin\\ffmpeg.exe" # Path to FFMPEG for video checking (cuda compatible version best)
+ffprobe_path = "C:\\ffmpeg\\bin\\ffprobe.exe" # For probing video files to get frame counts
+
 [network]
 timeout = 10 # Time in seconds before a request times out
 chunk_size = 1048576 # Chunk size in bytes to download at
