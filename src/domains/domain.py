@@ -149,11 +149,6 @@ class Domain:
 
                     destination = request.destination
                     completed_links[destination] = link.link
-                    self.logger.info(
-                        f"{format_bytes(file_size):<10}"
-                        f"{format_duration(time_taken):^10}"
-                        f"Downloaded: {destination}"
-                    )
                     downloaded += 1
 
         return DomainResult(
@@ -208,7 +203,9 @@ class Domain:
             headers = r_headers,
             params = r_params
         )
-        return self.session.download(request)
+        download = self.session.download(request)
+        self.log_download(download)
+        return download
 
     def create_file_path(self, post: Post, link: Link) -> Path | None:
         file_link = link.link
@@ -253,3 +250,28 @@ class Domain:
         )
 
         return thread_path / post_path / file_path
+
+    def log_download(self, response: DownloadResponse) -> None:
+        request = response.request
+        file_size = response.file_size
+        time_taken = response.time_taken
+
+        if response.status_code in (
+            StatusCode.FAILED_EXISTS,
+            StatusCode.FAILED_PATH,
+            StatusCode.FAILED
+        ):
+            return
+
+        if (
+            not request
+            or not file_size
+            or not time_taken
+        ):
+            return
+
+        self.logger.info(
+            f"{format_bytes(file_size):<10}"
+            f"{format_duration(time_taken):^10}"
+            f"Downloaded: {request.destination}"
+        )
