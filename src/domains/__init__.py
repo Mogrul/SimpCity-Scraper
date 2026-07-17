@@ -5,7 +5,7 @@ from .cyberdrop import CyberDrop
 
 
 DOMAINS: dict[str, type[Domain]] = {
-    #"goonbox.cr": GoonBox,
-    #"turbo.cr": Turbo,
+    "goonbox.cr": GoonBox,
+    "turbo.cr": Turbo,
     "cyberdrop.cr": CyberDrop
 }

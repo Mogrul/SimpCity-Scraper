@@ -1,232 +1,215 @@
 import io
 import json
 import logging
-import subprocess
-from concurrent.futures import ThreadPoolExecutor, as_completed, Future
+from concurrent.futures import ThreadPoolExecutor, as_completed, FIRST_COMPLETED, Future
+from json import JSONDecodeError
 from pathlib import Path
 
+import PIL
 import imagehash
 from PIL import Image
 from imagehash import ImageHash
+import subprocess
 
 from config import Config
 from database import Database
-from models import MarkedDelete
-from util import is_image, format_bytes, is_video
+from models import MarkedDelete, DuplicationResult
+from util import is_video, is_image, format_bytes
+
 
 class Duplication:
-    def __init__(self):
-        self.config = Config()
+    def __init__(self, path: Path, completed_links: dict[Path, str]):
         self.logger = logging.getLogger("Duplication")
-
-    def check_images(self, path: Path, completed_links: dict[Path, str]) -> None:
-        images = Images(path, completed_links)
-        hashed_count = images.hash_images()
-
-        if not hashed_count:
-            self.logger.warning(f"No images hashed in {path}")
-            return
-
-        marked_delete_count = images.compare_hashes()
-
-        if not marked_delete_count:
-            self.logger.info(f"No duplicate images found in {path}")
-            return
-
-        else:
-            self.logger.info(f"Found {marked_delete_count} duplicate images in {path}")
-
-        images.delete_duplicates()
-
-    def check_videos(self, path: Path, completed_links: dict[Path, str]) -> None:
-        ffmpeg_path = self.config.duplication.ffmpeg_path
-        ffprobe_path = self.config.duplication.ffprobe_path
-
-        if not ffmpeg_path.is_file():
-            self.logger.error(f"FFMPEG path: {ffmpeg_path} doesn't exist, can't check for video duplicates!")
-            return
-
-        if not ffprobe_path.is_file():
-            self.logger.error(f"FFProbe path: {ffprobe_path} doesn't exist, can't check for video duplicates!")
-            return
-
-        videos = Videos(path, completed_links)
-        hash_count = videos.hash_videos()
-
-        if not hash_count:
-            self.logger.warning(f"No videos hashed in {path}")
-            return
-
-        marked_delete_count = videos.compare_hashes()
-
-        if not marked_delete_count:
-            self.logger.info(f"No duplicate videos found in {path}")
-            return
-
-        else:
-            self.logger.info(f"Found {marked_delete_count} duplicate videos in {path}")
-
-        videos.delete_duplicates()
-
-
-class Videos:
-    def __init__(
-            self,
-            path: Path,
-            completed_links: dict[Path, str]
-    ):
-        self.logger = logging.getLogger("duplication.videos")
+        self.config = Config()
         self.path = path
         self.completed_links = completed_links
-        self.config = Config()
         self.database = Database()
 
-        self.hash_cache: dict[Path, list[ImageHash]] = {}
-        self.marked_delete: list[MarkedDelete] = []
+    def get_files(self, videos: bool) -> list[Path]:
+        files = [f for f in self.path.rglob("*") if f.is_file()]
 
-    def hash_videos(self) -> int:
-        if not self.path.exists():
-            return 0
+        if videos:
+            return [f for f in files if is_video(f)]
+        else:
+            return [f for f in files if is_image(f)]
 
-        videos = [
-            v for v in self.path.rglob("*")
-            if v.is_file() and is_video(v)
-        ]
+    def check_videos(self) -> DuplicationResult | None:
+        videos = self.get_files(True)
+        hashed_files = self.hash_files(videos, True)
 
-        if not videos: return 0
+        if len(hashed_files) == 0:
+            self.logger.info(f"Found no video files in {self.path}")
+            return None
 
-        # Retrieve a hardware accelerator to use
-        hwaccel = self.get_best_hwaccel()
+        else:
+            self.logger.info(f"Found {len(videos)} video files in {self.path}")
+
+        marked_delete = self.compare_hashes(hashed_files, True)
+
+        if len(marked_delete) == 0:
+            self.logger.info(f"Found no duplicate video files in {self.path}")
+            return None
+
+        deleted_count, bytes_saved = self.delete_duplicates(marked_delete)
+        return DuplicationResult(
+            deleted_count,
+            bytes_saved
+        )
+
+    def check_images(self) -> DuplicationResult | None:
+        images = self.get_files(False)
+        hashed_files = self.hash_files(images, False)
+
+        if len(hashed_files) <= 0:
+            self.logger.info(f"Found no images in {self.path}")
+            return None
+
+        else:
+            self.logger.info(f"Found {len(images)} images in {self.path}")
+
+        marked_delete = self.compare_hashes(hashed_files, False)
+
+        if len(marked_delete) <= 0:
+            self.logger.info(f"Found no duplicate images in {self.path}")
+            return None
+
+        deleted_count, bytes_saved = self.delete_duplicates(marked_delete)
+        return DuplicationResult(
+            deleted_count,
+            bytes_saved
+        )
+
+    def hash_files(self, files: list[Path], videos: bool = False) -> dict[Path, list[ImageHash]]:
+        hashed_files: dict[Path, list[ImageHash]] = {}
+        hashing_fnc = self.hash_image if not videos else self.hash_video
+        type_str = "video" if videos else "image"
 
         with ThreadPoolExecutor(
             max_workers = self.config.thread_count,
-            thread_name_prefix = "duplication.videos.thread"
+            thread_name_prefix = "hashing.thread"
         ) as executor:
+            log_every = max(1, len(files) // 20)
             complete = 0
             futures: dict[Future, Path] = {
-                executor.submit(self.hash_video, p, hwaccel): p
-                for p in videos
+                executor.submit(hashing_fnc, file): file
+                for file in files
             }
 
-            for future in as_completed(futures.keys()):
-                vidpath = futures[future]
+            for future in as_completed(futures):
+                file_path = futures[future]
 
                 try:
-                    vidhashes = future.result()
+                    hashes = future.result()
 
                 except Exception as e:
                     self.logger.error(e)
                     continue
 
-                if not vidhashes:
-                    self.logger.error(f"Failed to hash video: {vidpath}")
+                if not hashes:
+                    self.logger.error(f"Failed to hash {type_str} file: {file_path}")
                     continue
 
                 complete += 1
-                self.hash_cache[vidpath] = vidhashes
-                self.logger.info(f"{f'{complete}/{len(videos)}':<15} Hashing...")
+                hashed_files[file_path] = hashes
+                if complete % log_every == 0 or complete == len(files):
+                    self.logger.info(f"{f'{complete}/{len(files)}':<15} hashing {type_str} files")
 
-        return len(self.hash_cache.keys())
+        return hashed_files
 
-    def get_video_duration(self, path: Path) -> float:
+    def compare_hashes(self, hashed_files: dict[Path, list[ImageHash]], video: bool) -> list[MarkedDelete]:
+        def file_pairs():
+            for i, (file1, hashes1) in enumerate(files):
+                for file2, hashes2 in files[i + 1 :]:
+                    yield i, file1, file2, hashes1, hashes2
+
+        compare_fnc = self.compare_image if not video else self.compare_video
+        marked_deletes: list[MarkedDelete] = []
+        files = list(hashed_files.items())
+        type_str = "video" if video else "image"
+
+        with ThreadPoolExecutor(
+            max_workers = self.config.thread_count,
+            thread_name_prefix = "comparing.thread"
+        ) as executor:
+            completed_files: set[int] = set() # Store completed indexes for logging
+            log_every = max(1, len(files) // 20)
+
+            for index, result in executor.map(
+                lambda args: compare_fnc(*args),
+                file_pairs(),
+                buffersize = self.config.thread_count * 4
+            ):
+                index += 1
+
+                if result:
+                    marked_deletes.append(result)
+
+                if index not in completed_files:
+                    completed_files.add(index)
+                    if len(completed_files) % log_every == 0 or len(completed_files) == len(files):
+                        self.logger.info(
+                            f"{f'{len(completed_files)}/{len(files)}':<15} comparing {type_str} files"
+                        )
+
+        return marked_deletes
+
+    def hash_image(self, img_path: Path) -> list[ImageHash] | None:
+        try:
+            with Image.open(img_path) as img:
+                return [imagehash.phash(img, hash_size = 4)]
+
+        except (FileNotFoundError, PIL.UnidentifiedImageError):
+            return None
+
+    def hash_video(self, vid_path: Path) -> list[ImageHash] | None:
+        hashes: list[ImageHash] = []
+        samples = self.config.duplication.samples
+
+        # Obtain video duration for timestamping
         result = subprocess.run(
             [
                 str(self.config.duplication.ffprobe_path),
                 "-v", "quiet",
                 "-print_format", "json",
                 "-show_format",
-                str(path)
+                str(vid_path)
             ],
             capture_output = True,
             text = True,
             check = True
         )
 
-        data = json.loads(result.stdout)
-        return float(data["format"]["duration"])
+        try:
+            data = json.loads(result.stdout)
 
-    def get_best_hwaccel(self) -> str | None:
-        available = self.get_hwaccels()
+        except JSONDecodeError:
+            return hashes
 
-        # Prefer NVIDIA
-        if "cuda" in available:
-            return "cuda"
+        duration: float = float(data["format"]["duration"])
 
-        # Windows GPU acceleration fallback
-        if "d3d12va" in available:
-            return "d3d12va"
-
-        if "d3d11va" in available:
-            return "d3d11va"
-
-        # Intel
-        if "qsv" in available:
-            return "qsv"
-
-        # AMD/Linux
-        if "vaapi" in available:
-            return "vaapi"
-
-        return None
-
-    def get_hwaccels(self) -> list[str]:
-        result = subprocess.run(
-            [
-                str(self.config.duplication.ffmpeg_path),
-                "-hide_banner",
-                "-hwaccels"
-            ],
-            capture_output = True,
-            text = True,
-            check = True
-        )
-
-        lines = result.stdout.splitlines()
-
-        return [
-            line.strip()
-            for line in lines
-            if line.strip() and not line.startswith("Hardware")
-        ]
-
-    def get_command(
-            self,
-            timestamp: float,
-            hwaccel: str | None,
-            path: Path
-    ):
-        command = [str(self.config.duplication.ffmpeg_path)]
-        if hwaccel: command.extend(["-hwaccel", hwaccel])
-        command.extend([
-            "-ss", str(timestamp),
-            "-i", str(path),
-            "-vframes", "1",
-            "-f", "image2pipe",
-            "-vcodec", "mjpeg",
-            "-loglevel", "error",
-            "pipe:1"
-        ])
-
-        return command
-
-    def hash_video(self, path: Path, hwaccel: str | None) -> list[ImageHash]:
-        hashes: list[ImageHash] = []
-        samples = self.config.duplication.samples
-
-        duration = self.get_video_duration(path)
-
+        # Recurse through target samples to obtain frames
         for i in range(0, samples):
             timestamp = duration * ((i + 1) / (samples + 1))
 
+            # Get the image frame as bytes object
             result = subprocess.run(
-                self.get_command(timestamp, hwaccel, path),
+                [
+                    str(self.config.duplication.ffmpeg_path),
+                    "-ss", str(timestamp),
+                    "-i", str(vid_path),
+                    "-vframes", "1",
+                    "-f", "image2pipe",
+                    "-vcodec", "mjpeg",
+                    "-loglevel", "error",
+                    "pipe:1"
+                ],
                 stdout = subprocess.PIPE,
                 stderr = subprocess.PIPE,
                 check = True
             )
 
             if result.returncode != 0:
-                self.logger.error(result.stderr.decode())
+                self.logger.error(result.stderr.decode("utf-8"))
                 return []
 
             image = Image.open(io.BytesIO(result.stdout))
@@ -234,35 +217,26 @@ class Videos:
 
         return hashes
 
-    def compare_hashes(self):
-        def video_pairs():
-            for i, (vid1, hashes1) in enumerate(videos):
-                for vid2, hashes2 in videos[i + 1:]:
-                    yield i, vid1, vid2, hashes1, hashes2
+    def compare_image(
+            self,
+            index: int,
+            img1: Path,
+            img2: Path,
+            hashes1: list[ImageHash],
+            hashes2: list[ImageHash],
+    ) -> tuple[int, MarkedDelete | None]:
+        marked_delete = None
+        hash1 = hashes1[0]
+        hash2 = hashes2[0]
+        hash_size = hash1.hash.size
+        similarity = (
+            1 - ((hash1 - hash2) / hash_size)
+        )
 
-        videos = list(self.hash_cache.items())
-        completed_videos = set()
+        if similarity >= self.config.duplication.threshold:
+            marked_delete = MarkedDelete(img1, img2)
 
-        with ThreadPoolExecutor(
-            max_workers = self.config.thread_count,
-            thread_name_prefix = "duplication.videos.thread"
-        ) as executor:
-            for index, result in executor.map(
-                lambda args: self.compare_video(*args),
-                video_pairs(),
-                buffersize = self.config.thread_count * 4
-            ):
-                index += 1
-
-                if result:
-                    self.marked_delete.append(result)
-
-                if index not in completed_videos:
-                    completed_videos.add(index)
-
-                    self.logger.info(f"{f'{len(completed_videos)}/{len(videos)}':<15} Comparing...")
-
-        return len(self.marked_delete)
+        return index, marked_delete
 
     def compare_video(
             self,
@@ -270,7 +244,7 @@ class Videos:
             vid1: Path,
             vid2: Path,
             hashes1: list[ImageHash],
-            hashes2: list[ImageHash]
+            hashes2: list[ImageHash],
     ) -> tuple[int, MarkedDelete | None]:
         marked_delete = None
 
@@ -291,204 +265,45 @@ class Videos:
 
         return index, marked_delete
 
-    def delete_duplicates(self):
-        deleted_count = 0
-        bytes_saved = 0
-
-        while self.marked_delete:
-            to_delete = self.marked_delete.pop()
-
-            vid1 = to_delete.file1
-            vid2 = to_delete.file2
-
-            try:
-                vid1_size = vid1.stat().st_size
-                vid2_size = vid2.stat().st_size
-
-            except FileNotFoundError:
-                continue
-
-            if vid1_size > vid2_size:
-                kept, kept_size = vid1, vid1_size
-                deleted, deleted_size = vid2, vid2_size
-
-            else:
-                kept, kept_size = vid2, vid2_size
-                deleted, deleted_size = vid1, vid1_size
-
-            # Try and get deleted link
-            link = self.completed_links.get(deleted, None)
-            if link:
-                self.database.add_duplicate(link)
-
-            deleted.unlink(missing_ok = True)
-            deleted_count += 1
-            bytes_saved += deleted_size
-            self.logger.info(
-                "Duplicate Found:\n"
-                f"          {format_bytes(deleted_size):<10} Deleted {deleted}\n"
-                f"          {format_bytes(kept_size):<10} Kept {kept}\n"
-            )
-
-        self.logger.info(
-            "Complete:\n"
-            f"          {format_bytes(bytes_saved):<10} saved\n"
-            f"          {deleted_count:<10} deleted\n"
-        )
-
-def hash_image(path: Path) -> ImageHash | None:
-    try:
-        with Image.open(path) as image:
-            imghash = imagehash.phash(image, hash_size = 4)
-
-        return imghash
-
-    except Exception:
-        return None
-
-class Images:
-    def __init__(self, path: Path, completed_links: dict[Path, str]) -> None:
-        self.logger = logging.getLogger("Duplication.Images")
-        self.path = path
-        self.completed_links = completed_links
-        self.config = Config()
-        self.database = Database()
-
-        self.hash_cache: dict[Path, ImageHash] = {}
-        self.marked_delete: list[MarkedDelete] = []
-
-    def hash_images(self) -> int:
-        if not self.path.exists():
-            return 0
-
-        images = [
-            i for i in self.path.rglob("*")
-            if i.is_file() and is_image(i)
-        ]
-
-        if not images: return 0
-
-        with ThreadPoolExecutor(
-            max_workers = self.config.thread_count,
-            thread_name_prefix = "duplication.images.thread"
-        ) as executor:
-            complete = 0
-            futures: dict[Future, Path] = {
-                executor.submit(hash_image, p): p
-                for p in images
-            }
-
-            for future in as_completed(futures.keys()):
-                imgpath = futures[future]
-
-                try:
-                    imghash = future.result()
-
-                except Exception as e:
-                    self.logger.error(e)
-                    continue
-
-                if not imghash:
-                    self.logger.error(f"Failed to hash image: {imgpath}")
-                    continue
-
-                complete += 1
-                self.hash_cache[imgpath] = imghash
-                self.logger.info(f"{f'{complete}/{len(images)}':<15} Hashing...")
-
-        return len(self.hash_cache)
-
-    def compare_hashes(self) -> int:
-        def image_pairs():
-            for i, (img1, hash1) in enumerate(images):
-                for img2, hash2 in images[i + 1:]:
-                    yield i, img1, img2, hash1, hash2
-
-        images = list(self.hash_cache.items())
-        completed_images = set()
-
-        with ThreadPoolExecutor(
-            max_workers = self.config.thread_count,
-            thread_name_prefix = "duplication.images.thread"
-        ) as executor:
-            for index, result in executor.map(
-                lambda args: self.compare_image(*args),
-                image_pairs(),
-                buffersize = self.config.thread_count * 4,
-            ):
-                index += 1
-
-                if result:
-                    self.marked_delete.append(result)
-
-                if index not in completed_images:
-                    completed_images.add(index)
-
-                    self.logger.info(f"{f'{len(completed_images)}/{len(images)}':<15} Comparing images")
-
-        return len(self.marked_delete)
-
-    def compare_image(
+    def delete_duplicates(
             self,
-            index: int,
-            img1: Path,
-            img2: Path,
-            hash1: ImageHash,
-            hash2: ImageHash
-    ) -> tuple[int, MarkedDelete | None]:
-        marked_delete = None
-        hash_size = hash1.hash.size
-        similarity = (
-                1 - ((hash1 - hash2) / hash_size)
-        )
-
-        if similarity >= self.config.duplication.threshold:
-            marked_delete = MarkedDelete(img1, img2)
-
-        return index, marked_delete
-
-    def delete_duplicates(self):
+            marked_delete: list[MarkedDelete]
+    ) -> tuple[int, int]:
         deleted_count = 0
         bytes_saved = 0
 
-        while self.marked_delete:
-            to_delete = self.marked_delete.pop()
-
-            img1 = to_delete.file1
-            img2 = to_delete.file2
+        while marked_delete:
+            to_delete = marked_delete.pop()
+            file1 = to_delete.file1
+            file2 = to_delete.file2
 
             try:
-                img1_size = img1.stat().st_size
-                img2_size = img2.stat().st_size
+                file1_size = file1.stat().st_size
+                file2_size = file2.stat().st_size
 
             except FileNotFoundError:
                 continue
 
-            if img1_size > img2_size:
-                kept, kept_size = img1, img1_size
-                deleted, deleted_size = img2, img2_size
+            if file1_size > file2_size:
+                kept, kept_size = file1, file1_size
+                deleted, deleted_size = file2, file2_size
 
             else:
-                kept, kept_size = img2, img2_size
-                deleted, deleted_size = img1, img1_size
+                kept, kept_size = file2, file2_size
+                deleted, deleted_size = file1, file1_size
 
-            # Try and get deleted link
+            # Try and get original link of downloaded file
             link = self.completed_links.get(deleted, None)
             if link:
                 self.database.add_duplicate(link)
 
-            deleted.unlink(missing_ok = True)
+            deleted.unlink()
             deleted_count += 1
-            bytes_saved += deleted_size
+            bytes_saved += int(deleted_size)
             self.logger.info(
                 "Duplicate Found:\n"
-                f"          {format_bytes(deleted_size):<10} Deleted {deleted}\n"
-                f"          {format_bytes(kept_size):<10} Kept {kept}\n"
+                f"          {format_bytes(deleted_size):<10} deleted {deleted}\n"
+                f"         {format_bytes(kept_size):<10} kept {kept}"
             )
 
-        self.logger.info(
-            "Complete:\n"
-            f"          {format_bytes(bytes_saved):<10} saved\n"
-            f"          {deleted_count:<10} deleted\n"
-        )
-
+        return deleted_count, bytes_saved

@@ -11,8 +11,9 @@ from config import Config
 from domains import DOMAINS
 from duplication import Duplication
 from enums import RequestType, ResponseType
-from models import Request, Thread, Link, Post, DomainResult
+from models import Request, Thread, Link, Post, DomainResult, DuplicationResult
 from session import Session
+from util import format_bytes
 
 
 def normalise_thread_link(link: str) -> str | None:
@@ -185,6 +186,7 @@ class Scraper:
         self.session = Session()
 
         self.domain_results: dict[str, DomainResult] = {}
+        self.duplication_results: dict[Path, DuplicationResult] = {}
 
     def run(self):
         thread_links = self.config.links
@@ -244,12 +246,20 @@ class Scraper:
                     *tag_path,
                     thread.username
                 )
-                duplication = Duplication()
+                duplication = Duplication(thread_path, completed_links)
                 if self.config.duplication.images:
-                    duplication.check_images(thread_path, completed_links)
+                    result = duplication.check_images()
+                    if result:
+                        self.duplication_results[thread_path] = result
 
                 if self.config.duplication.videos:
-                    duplication.check_videos(thread_path, completed_links)
+                    result = duplication.check_videos()
+                    if result:
+                        if thread_path in self.duplication_results:
+                            self.duplication_results[thread_path] += result
+
+                        else:
+                            self.duplication_results[thread_path] = result
 
         # Log the finished domain results
         self.log_results()
@@ -306,6 +316,13 @@ class Scraper:
         return completed_links
 
     def log_results(self):
+        for path, result in self.duplication_results.items():
+            self.logger.info(
+                f"{path}:\n"
+                f"          {'Deleted:':<20}{f'{result.deleted_count}':>15}\n"
+                f"          {'Saved:':<20}{f'{format_bytes(result.bytes_saved)}':>15}\n"
+            )
+
         for domain, result in self.domain_results.items():
             total = result.downloaded + result.failed + result.duplicate
 
