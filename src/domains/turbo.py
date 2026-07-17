@@ -14,17 +14,17 @@ class Turbo(Domain):
             **kwargs
         )
 
-    def on_submission(self, post: Post, link: Link) -> list[DownloadResponse]:
-        responses = []
-        if self.stop_event.is_set(): return responses
+    def on_submission(self, post: Post, link: Link) -> DownloadResponse | None:
+        if self.stop_event.is_set():
+            return None
 
         if "/v/" in link.link:
-            responses.append(self.file(post, link))
+            return self.file(post, link)
 
         else:
             self.logger.critical(f"Unsupported link: {link.link}")
 
-        return responses
+        return None
 
     def file(self, post: Post, link: Link) -> DownloadResponse:
         file_id = link.link.split("/v/")[-1]

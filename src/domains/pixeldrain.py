@@ -14,20 +14,23 @@ class PixelDrain(Domain):
             **kwargs
         )
 
-    def on_submission(self, post: Post, link: Link) -> list[DownloadResponse]:
-        responses = []
+    def on_submission(self, post: Post, link: Link) -> DownloadResponse | None:
+        if self.stop_event.is_set():
+            return None
 
-        if "/l/" in link.link:
-            responses.extend(self.album(post, link))
+        if link.signed:
+            return self.file(post, link)
+
+        elif "/l/" in link.link:
+            self.album(post, link)
 
         else:
             self.logger.critical(f"Unsupported link: {link.link}")
 
-        return responses
+        return None
 
-    def album(self, post: Post, link: Link) -> list[DownloadResponse]:
+    def album(self, post: Post, link: Link) -> None:
         album_id = link.link.split("/")[-1]
-        responses = []
 
         # Send API request to get album data
         request = Request(
@@ -38,7 +41,7 @@ class PixelDrain(Domain):
         response = self.session.send(request)
 
         if not isinstance(response.data, dict):
-            return responses
+            return None
 
         files = response.data.get("files", [])
 
@@ -59,9 +62,16 @@ class PixelDrain(Domain):
                 signed = f"https://pixeldrain.com/api/file/{fileid}",
                 filename = filename,
             )
-            responses.append(self.file(post, file_link))
 
-        return responses
+            # Add the files to the thread pool
+            if self.executor:
+                future = self.executor.submit(
+                    self.on_submission,
+                    post,
+                    file_link
+                )
 
-    def file(self, post: Post, link: Link) -> DownloadResponse:
-        return self.download(post, link)
+                with self.future_lock:
+                    self.futures[future] = file_link
+
+        return None

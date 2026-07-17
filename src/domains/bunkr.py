@@ -16,25 +16,28 @@ class Bunkr(Domain):
             **kwargs
         )
 
-    def on_submission(self, post: Post, link: Link) -> list[DownloadResponse]:
-        responses = []
-        if self.stop_event.is_set(): return responses
+    def on_submission(self, post: Post, link: Link) -> DownloadResponse | None:
+        if self.stop_event.is_set():
+            return None
+
+        if link.signed:
+            return self.file(post, link)
 
         if "/v/" in link.link:
-            responses.append(self.file(post, link))
+            return self.file(post, link)
 
         elif "/f/" in link.link:
-            responses.append(self.file(post, link))
+            return self.file(post, link)
 
         elif "/a/" in link.link:
-            responses.extend(self.album(post, link))
+            self.album(post, link)
 
         else:
             self.logger.critical(f"Unsupported link: {link.link}")
 
-        return responses
+        return None
 
-    def album(self, post: Post, link: Link) -> list[DownloadResponse]:
+    def album(self, post: Post, link: Link) -> None:
         def get_max_page_num(soup: BeautifulSoup) -> int:
             pagination = soup.find("nav", {"class": "pagination"})
             if not pagination: return 1
@@ -48,8 +51,6 @@ class Bunkr(Domain):
             except ValueError:
                 return 1
 
-        responses = []
-
         # Visit first page
         request = Request(
             link = link.link,
@@ -59,12 +60,14 @@ class Bunkr(Domain):
         response = self.session.send(request)
 
         if not isinstance(response.data, BeautifulSoup):
-            return responses
+            return None
 
         max_page_num = get_max_page_num(response.data)
 
         for page_num in range(1, max_page_num + 1):
-            if self.stop_event.is_set(): return responses
+            if self.stop_event.is_set():
+                return None
+
             if page_num != 1:
                 request.params["page"] = str(page_num)
                 response = self.session.send(request)
@@ -84,9 +87,18 @@ class Bunkr(Domain):
                     domain = link.domain
                 )
 
-                responses.append(self.file(post, new_link))
+                # Submit the link to the thread pool
+                if self.executor:
+                    future = self.executor.submit(
+                        self.on_submission,
+                        post,
+                        new_link
+                    )
 
-        return responses
+                    with self.future_lock:
+                        self.futures[future] = new_link
+
+        return None
 
     def file(self, post: Post, link: Link) -> DownloadResponse:
         if self.stop_event.is_set(): return DownloadResponse(status_code = StatusCode.FAILED)

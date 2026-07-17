@@ -14,17 +14,20 @@ class GoonBox(Domain):
             **kwargs
         )
 
-    def on_submission(self, post: Post, link: Link) -> list[DownloadResponse]:
-        responses = []
-        if self.stop_event.is_set(): return responses
+    def on_submission(self, post: Post, link: Link) -> DownloadResponse | None:
+        if self.stop_event.is_set():
+            return None
+
+        if link.signed:
+            return self.file(post, link)
 
         if "/img/" in link.link:
-            responses.append(self.file(post, link))
+            return self.file(post, link)
 
         else:
-            responses.extend(self.album(post, link))
+            self.album(post, link)
 
-        return responses
+        return None
 
     def album(self, post: Post, link: Link) -> list[DownloadResponse]:
         album_id = link.link.split("/a/")[-1]
@@ -79,9 +82,15 @@ class GoonBox(Domain):
                     filename = filename,
                 )
 
-                download_responses.append(self.file(post, image_link))
+                # Add the files to the thread pool
+                if self.executor:
+                    future = self.executor.submit(
+                        self.on_submission,
+                        post,
+                        image_link
+                    )
+
+                    with self.future_lock:
+                        self.futures[future] = image_link
 
         return download_responses
-
-    def file(self, post: Post, link: Link) -> DownloadResponse:
-        return self.download(post, link)

@@ -1,7 +1,7 @@
 import logging
 import threading
-from collections import defaultdict
-from concurrent.futures import ThreadPoolExecutor, as_completed, Future
+from asyncio import FIRST_COMPLETED
+from concurrent.futures import ThreadPoolExecutor, Future, wait
 from pathlib import Path
 from uuid import uuid5, NAMESPACE_URL
 
@@ -36,14 +36,19 @@ class Domain:
         self.session = Session()
         self.token = ""
 
+        self.executor: ThreadPoolExecutor | None = None
+        self.futures: dict[Future, Link] = {}
+        self.future_lock = threading.Lock()
+
         if self.config.database.enabled:
             self.database = Database()
 
-    def run(self) -> DomainResult:
-        downloaded = 0
-        failed = 0
-        duplicate = 0
+        self.downloaded = 0
+        self.failed = 0
+        self.duplicate = 0
+        self.completed_links: dict[Path, str] = {}
 
+    def run(self) -> DomainResult:
         links_to_download: list[Link] = []
 
         # Check links against completed in database if enabled
@@ -55,7 +60,7 @@ class Domain:
                     or link.link in self.database.duplicates
                 ):
                     skipped += 1
-                    duplicate += 1
+                    self.duplicate += 1
                 else:
                     links_to_download.append(link)
 
@@ -84,91 +89,120 @@ class Domain:
             else:
                 self.logger.info(f"Got token: {self.token}")
 
-        # Store completed downloads Path -> URL
-        completed_links: dict[Path, str] = {}
-
+        # Dynamic thread executor that allows albums to submit work to
         with ThreadPoolExecutor(
             max_workers = self.config.thread_count,
             thread_name_prefix = self.thread_prefix
         ) as executor:
-            futures: dict[Future, Link] = {}
+            self.executor = executor
 
+            # Submit initial jobs
             for link in links_to_download:
-                post = self.posts[link.post_id]
+                post = self.posts.get(link.post_id)
 
                 if not post:
                     self.logger.warning(f"Failed to get post from ID: {link.post_id}")
                     continue
 
-                futures[executor.submit(self.on_submission, post, link)] = link
+                future = executor.submit(
+                    self.on_submission,
+                    post,
+                    link
+                )
 
-            # Handle futures completing
-            for future in as_completed(futures.keys()):
-                link = futures[future]
+                with self.future_lock:
+                    self.futures[future] = link
 
-                try:
-                    responses = future.result()
 
-                except Exception as e:
-                    self.logger.error(f"{link.link} failed: {e}")
-                    failed += 1
-                    continue
+            # Keep processing futures until there's none left
+            while True:
+                with self.future_lock:
+                    pending = dict(self.futures)
 
-                if not responses:
-                    failed += 1
-                    continue
+                if not pending:
+                    break
 
-                if getattr(self, "database", False):
-                    self.database.add_completed(link.link)
+                done, _ = wait(
+                    pending,
+                    return_when = FIRST_COMPLETED
+                )
 
-                for response in responses:
-                    # Handle status codes
-                    if response.status_code in (
-                            StatusCode.FAILED,
-                            StatusCode.FAILED_PATH
-                    ):
-                        failed += 1
+                # Handle futures completing
+                for future in done:
+                    with self.future_lock:
+                        link = self.futures.pop(future, None)
+
+                    if not link:
                         continue
 
-                    if response.status_code == StatusCode.FAILED_EXISTS:
-                        duplicate += 1
+                    try:
+                        response = future.result()
+
+                    except Exception as e:
+                        self.logger.error(f"{link.link} failed: {e}")
                         continue
 
-                    file_size = response.file_size
-                    time_taken = response.time_taken
-                    request = response.request
+                    self.handle_response(response)
 
-                    if (
-                            not file_size
-                            or not time_taken
-                            or not request
-                    ):
-                        self.logger.error(f"Failed to download file from ID: {link.post_id}")
-                        failed += 1
-                        continue
-
-                    destination = request.destination
-                    completed_links[destination] = link.link
-                    downloaded += 1
+        # Invalidate executor on completion
+        self.executor = None
 
         return DomainResult(
-            downloaded = downloaded,
-            duplicate = duplicate,
-            failed = failed,
-            completed_links = completed_links
+            downloaded = self.downloaded,
+            duplicate = self.duplicate,
+            failed = self.failed,
+            completed_links = self.completed_links
         )
 
-    def on_submission(self, post: Post, link: Link) -> list[DownloadResponse]:
+    def on_submission(self, post: Post, link: Link) -> DownloadResponse:
         pass
 
-    def album(self, post: Post, link: Link) -> list[DownloadResponse]:
+    def album(self, post: Post, link: Link) -> None:
         pass
 
     def file(self, post: Post, link: Link) -> DownloadResponse:
-        pass
+        return self.download(post, link)
 
     def get_token(self) -> str:
         pass
+
+    def handle_response(self, response: DownloadResponse):
+        # Likely an album, skip
+        if not response:
+            return
+
+        if response.status_code == StatusCode.FAILED:
+            self.failed += 1
+            return
+
+        if response.status_code in (
+            StatusCode.FAILED_EXISTS,
+            StatusCode.FAILED_PATH
+        ):
+            self.duplicate += 1
+            return
+
+        request = response.request
+        time_taken = response.time_taken
+        file_size = response.file_size
+
+        if (
+            not request
+            or not time_taken
+            or not file_size
+        ):
+            self.failed += 1
+            return
+
+        link = request.link
+        destination = request.destination
+
+        # Add to database if enabled
+        if getattr(self, "database", False):
+            self.database.add_completed(link)
+
+        self.completed_links[destination] = link
+        self.downloaded += 1
 
     def download(
             self,
@@ -186,6 +220,13 @@ class Domain:
             return DownloadResponse(status_code = StatusCode.FAILED_EXISTS)
 
         download_link = link.link if not link.signed else link.signed
+
+        if getattr(self, "database", False):
+            if (
+                download_link in self.database.duplicates
+                or download_link in self.database.completed
+            ):
+                return DownloadResponse(status_code = StatusCode.FAILED_EXISTS)
 
         r_params = {}
         r_headers = {}

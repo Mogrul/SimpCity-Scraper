@@ -32,16 +32,22 @@ class GoFile(Domain):
 
         return data.get("token", "")
 
-    def on_submission(self, post: Post, link: Link) -> list[DownloadResponse]:
-        responses = []
+    def on_submission(self, post: Post, link: Link) -> DownloadResponse | None:
+        if self.stop_event.is_set():
+            return None
+
+        if link.signed:
+            return self.file(post, link)
 
         if "/d/" in link.link:
-            return self.album(post, link)
+            self.album(post, link)
 
-        return responses
+        else:
+            self.logger.critical(f"Unsupported link: {link.link}")
 
-    def album(self, post: Post, link: Link) -> list[DownloadResponse]:
-        responses = []
+        return None
+
+    def album(self, post: Post, link: Link) -> None:
         album_id = link.link.split("/")[-1]
 
         request = Request(
@@ -60,7 +66,7 @@ class GoFile(Domain):
         response = self.session.send(request)
 
         if not isinstance(response.data, dict):
-            return responses
+            return None
 
         data = response.data.get("data", {})
         children = data.get("children", {})
@@ -83,9 +89,18 @@ class GoFile(Domain):
                 filename = filename
             )
 
-            responses.append(self.file(post, file_link))
+            # Add the file to the thread pool
+            if self.executor:
+                future = self.executor.submit(
+                    self.on_submission,
+                    post,
+                    file_link
+                )
 
-        return responses
+                with self.future_lock:
+                    self.futures[future] = file_link
+
+        return None
 
     def file(self, post: Post, link: Link) -> DownloadResponse:
         return self.download(
