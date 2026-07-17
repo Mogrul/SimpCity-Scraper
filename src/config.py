@@ -62,7 +62,8 @@ class Config:
             videos = True,
             ffmpeg_path = Path("C:\\ffmpeg\\bin\\ffmpeg.exe"),
             ffprobe_path = Path("C:\\ffmpeg\\bin\\ffprobe.exe"),
-            threshold = 0.9
+            threshold = 0.9,
+            samples = 3
         )
 
     def load_config(self, config_path = Path('config.toml')):
@@ -97,6 +98,7 @@ class Config:
         ffmpeg_path = duplication.get("ffmpeg_path", "C:\\ffmpeg\\bin\\ffmpeg.exe")
         ffprobe_path = duplication.get("ffprobe_path", "C:\\ffmpeg\\bin\\ffprobe.exe")
         threshold = duplication.get("threshold", 0.9)
+        samples = duplication.get("samples", 3)
 
         # Arg configs
         args = load_args()
@@ -121,7 +123,8 @@ class Config:
         self.duplication = DuplicationConfig(
             images = images,
             videos = videos,
-            ffmpeg_path = ffmpeg_path,
-            ffprobe_path = ffprobe_path,
-            threshold = threshold
+            ffmpeg_path = Path(ffmpeg_path),
+            ffprobe_path = Path(ffprobe_path),
+            threshold = threshold,
+            samples = samples
         )

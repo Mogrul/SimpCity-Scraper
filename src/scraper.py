@@ -248,6 +248,9 @@ class Scraper:
                 if self.config.duplication.images:
                     duplication.check_images(thread_path, completed_links)
 
+                if self.config.duplication.videos:
+                    duplication.check_videos(thread_path, completed_links)
+
         # Log the finished domain results
         self.log_results()
 

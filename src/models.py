@@ -52,6 +52,7 @@ class DuplicationConfig:
     ffmpeg_path: Path
     ffprobe_path: Path
     threshold: float
+    samples: int
 
 @dataclass
 class DatabaseConfig:

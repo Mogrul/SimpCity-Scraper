@@ -9,6 +9,7 @@ location = "data/data.db" # Location where the database will be generated
 images = true # To check for duplicate images
 videos = true # To check for duplicate videos -- intensive
 threshold = 0.9 # Threshold to mark files as duplicate: 0.1 = 10% similarity
+samples = 3 # Amount of samples to get when checking video duplicates
 ffmpeg_path = "C:\\ffmpeg\\bin\\ffmpeg.exe" # Path to FFMPEG for video checking (cuda compatible version best)
 ffprobe_path = "C:\\ffmpeg\\bin\\ffprobe.exe" # For probing video files to get frame counts
 
