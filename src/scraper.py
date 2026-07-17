@@ -4,6 +4,7 @@ from datetime import datetime, timezone
 import logging
 from pathlib import Path
 from urllib.parse import urlparse, unquote, parse_qs
+from concurrent.futures import ThreadPoolExecutor, as_completed, Future
 
 from bs4 import BeautifulSoup, Tag
 
@@ -216,23 +217,34 @@ class Scraper:
             max_page_num = get_max_page_num(page)
             posts: dict[int, Post] = {}
             links: list[Link] = []
-            for page_num in range(1, max_page_num + 1):
-                if page_num != 1:
-                    page = self.get_page(thread_link, page_num)
-                    if not page:
-                        self.logger.warning(f"Failed to get page: {thread_link}")
+            with ThreadPoolExecutor(
+                max_workers = self.config.thread_count,
+                thread_name_prefix = "scrape.page"
+            ) as executor:
+                counter = 1
+                # Future -> page num
+                futures: dict[Future, int] = {
+                    executor.submit(self.run_page, thread_link, page_num)
+                    : page_num for page_num in range(1, max_page_num + 1)
+                }
+
+                for future in as_completed(futures.keys()):
+                    page_num = futures[future]
+
+                    try:
+                        result = future.result()
+
+                    except Exception as e:
+                        self.logger.error(f"Failed to get page {page_num} in thread {thread_link}: {e}")
                         return
 
-                page_posts = get_posts(page)
-                if not page_posts:
-                    self.logger.warning(f"Failed to get posts: {thread_link}")
-                    return
+                    page_posts, page_links = result
+                    links.extend(page_links)
+                    for key, value in page_posts.items():
+                        posts[key] = value
 
-                page_posts, page_links = page_posts
-                links.extend(page_links)
-
-                for key, value in page_posts.items():
-                    posts[key] = value
+                    self.logger.info(f"{f'{counter}/{max_page_num}':<10} {thread_link}")
+                    counter += 1
 
             self.logger.info(f"Found {len(posts)} posts, {len(links)} links in {thread_link}")
             completed_links = self.pass_to_domains(thread, posts, links)
@@ -265,6 +277,21 @@ class Scraper:
 
         # Log the finished domain results
         self.log_results()
+
+    def run_page(self, thread_link: str, page_num: int) -> tuple[dict[int, Post], list[Link]]:
+        page = self.get_page(thread_link, page_num)
+        if not page:
+            self.logger.warning(f"Failed to get page: {thread_link}")
+            return {}, []
+
+        page_posts = get_posts(page)
+        if not page_posts:
+            self.logger.warning(f"Failed to get posts: {thread_link}")
+            return {}, []
+
+        page_posts, page_links = page_posts
+
+        return page_posts, page_links
 
     def get_page(self, link: str, page_num = 1) -> BeautifulSoup | None:
         request = Request(f"{link}/page-{page_num}", RequestType.GET, ResponseType.SOUP)
