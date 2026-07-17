@@ -16,9 +16,16 @@ class CyberDrop(Domain):
 
     def on_submission(self, post: Post, link: Link) -> list[DownloadResponse]:
         responses = []
+        if self.stop_event.is_set(): return responses
 
         if "/e/" in link.link:
             responses.append(self.file(post, link))
+
+        if "/f/" in link.link:
+            responses.append(self.file(post, link))
+        
+        else:
+            self.logger.critical(link.link)
 
         return responses
 

@@ -8,7 +8,7 @@ from session import Session
 
 
 logger = load_logger()
-logger.setLevel(logging.INFO)
+logger.setLevel(logging.DEBUG)
 
 config = Config()
 config.load_config()

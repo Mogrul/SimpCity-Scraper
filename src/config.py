@@ -50,6 +50,7 @@ class Config:
 
         self.downloads = DownloadConfig(
             location = Path("Downloads"),
+            skip_domains = []
         )
 
         self.database = DatabaseConfig(
@@ -73,6 +74,7 @@ class Config:
         # Download configs
         downloads = data.get("downloads", {})
         download_location = downloads.get("location", "Downloads")
+        skip_domains = downloads.get("skip_domains", [])
 
         # Network configs
         network = data.get("network", {})
@@ -113,6 +115,7 @@ class Config:
 
         self.downloads = DownloadConfig(
             location = Path(download_location),
+            skip_domains = skip_domains
         )
 
         self.database = DatabaseConfig(

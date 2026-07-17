@@ -16,6 +16,7 @@ class GoonBox(Domain):
 
     def on_submission(self, post: Post, link: Link) -> list[DownloadResponse]:
         responses = []
+        if self.stop_event.is_set(): return responses
 
         if "/img/" in link.link:
             responses.append(self.file(post, link))
@@ -49,6 +50,8 @@ class GoonBox(Domain):
 
         download_responses = []
         for page_num in range(1, last_page + 1):
+            if self.stop_event.is_set(): break
+
             if page_num != 1:
                 request = request
                 request.params["page"] = str(page_num)

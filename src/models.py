@@ -13,6 +13,7 @@ class Request:
     request_type: RequestType
     response_type: ResponseType
     params: dict[str, str] = field(default_factory = dict)
+    headers: dict[str, str] = field(default_factory = dict)
 
 @dataclass
 class Response:
@@ -37,6 +38,7 @@ class DownloadResponse:
 @dataclass
 class DownloadConfig:
     location: Path
+    skip_domains: list[str] = field(default_factory = list)
 
 @dataclass
 class NetworkConfig:

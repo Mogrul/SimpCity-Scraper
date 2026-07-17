@@ -1,4 +1,5 @@
 import logging
+import threading
 from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor, as_completed, Future
 from pathlib import Path
@@ -20,6 +21,7 @@ class Domain:
             thread: Thread,
             name: str | None = None,
             logger: logging.Logger | None = None,
+            token_required: bool = False,
     ):
         self.posts = posts
         self.links = links
@@ -27,9 +29,12 @@ class Domain:
         self.name = name if name else "Domain"
         self.logger = logger if logger else logging.getLogger("domain")
         self.thread_prefix = self.name + ".thread"
+        self.stop_event = threading.Event()
+        self.token_required = token_required
 
         self.config = Config()
         self.session = Session()
+        self.token = ""
 
         if self.config.database.enabled:
             self.database = Database()
@@ -39,7 +44,7 @@ class Domain:
         failed = 0
         duplicate = 0
 
-        links_to_download = []
+        links_to_download: list[Link] = []
 
         # Check links against completed in database if enabled
         if self.database:
@@ -58,6 +63,26 @@ class Domain:
 
         else:
             links_to_download = self.links
+
+        # Filter out any duplicates
+        urls: set[str] = set()
+        for link_to_download in links_to_download.copy():
+            if link_to_download.link not in urls:
+                urls.add(link_to_download.link)
+
+            else:
+                links_to_download.remove(link_to_download)
+
+        # Check if there's a token to grab
+        if self.token_required:
+            self.token = self.get_token()
+
+            if not self.token:
+                self.logger.error(f"Failed to get token")
+                return DomainResult(0, 0, 0, {})
+
+            else:
+                self.logger.info(f"Got token: {self.token}")
 
         # Store completed downloads Path -> URL
         completed_links: dict[Path, str] = {}
@@ -147,7 +172,10 @@ class Domain:
     def file(self, post: Post, link: Link) -> DownloadResponse:
         pass
 
-    def download(self, post: Post, link: Link) -> DownloadResponse:
+    def get_token(self) -> str:
+        pass
+
+    def download(self, post: Post, link: Link, headers: dict[str, str] | None = None) -> DownloadResponse:
         file_path = self.create_file_path(post, link)
 
         if not file_path:
@@ -157,7 +185,12 @@ class Domain:
             return DownloadResponse(status_code = StatusCode.FAILED_EXISTS)
 
         download_link = link.link if not link.signed else link.signed
-        return self.session.download(DownloadRequest(download_link, file_path))
+
+        if headers:
+            return self.session.download(DownloadRequest(download_link, file_path, headers))
+
+        else:
+            return self.session.download(DownloadRequest(download_link, file_path))
 
     def create_file_path(self, post: Post, link: Link) -> Path | None:
         file_link = link.link

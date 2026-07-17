@@ -1,5 +1,6 @@
 import json
 import logging
+import os
 import time
 from http.cookiejar import MozillaCookieJar
 
@@ -32,17 +33,23 @@ class Session:
         self.load_headers()
 
     def send(self, request: Request) -> Response:
+        headers = dict(self.session.headers)
+        for key, value in request.headers.items():
+            headers[key] = value
+
         try:
             if request.request_type == RequestType.POST:
                 response = self.session.post(
                     url = request.link,
                     params = request.params,
+                    headers = headers
                 )
 
             else:
                 response = self.session.get(
                     url = request.link,
-                    params = request.params
+                    params = request.params,
+                    headers = headers
                 )
 
         except TimeoutError:
@@ -50,6 +57,9 @@ class Session:
 
         # Handle response
         if response.status_code != 200:
+            self.logger.info(headers)
+            self.logger.error(response.headers)
+            os.abort()
             return self._on_error(request)
 
         try:
@@ -87,7 +97,7 @@ class Session:
         # Handle download resuming
         temp_destination = request.destination.with_suffix(request.destination.suffix + ".temp")
         downloaded_bytes = 0
-        headers = {}
+        headers = dict(self.session.headers)
 
         if temp_destination.exists():
             downloaded_bytes = temp_destination.stat().st_size

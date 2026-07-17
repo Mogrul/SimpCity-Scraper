@@ -16,9 +16,13 @@ class Turbo(Domain):
 
     def on_submission(self, post: Post, link: Link) -> list[DownloadResponse]:
         responses = []
+        if self.stop_event.is_set(): return responses
 
         if "/v/" in link.link:
             responses.append(self.file(post, link))
+
+        else:
+            self.logger.critical(link.link)
 
         return responses
 

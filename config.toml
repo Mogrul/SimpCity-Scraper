@@ -1,5 +1,6 @@
 [downloads]
 location = "Downloads" # Location to where the downloads will go
+skip_domains = ["turbo.cr", "cyberdrop.cr", "gofile.io"] # Skip domains to download from, empty for all
 
 [database]
 enabled = true # Disable / Enable the database functionality

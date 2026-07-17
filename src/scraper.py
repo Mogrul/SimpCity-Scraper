@@ -286,6 +286,9 @@ class Scraper:
 
         # Sort links by their domain
         for link in links:
+            if link.domain in self.config.downloads.skip_domains:
+                continue
+
             if link.domain not in DOMAINS:
                 continue
 
