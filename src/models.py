@@ -49,7 +49,6 @@ class NetworkConfig:
 class DatabaseConfig:
     enabled: bool
     location: Path
-    save_completed: bool
 
 @dataclass
 class Thread:

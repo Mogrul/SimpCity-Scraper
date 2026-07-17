@@ -4,7 +4,6 @@ location = "Downloads" # Location to where the downloads will go
 [database]
 enabled = true # Disable / Enable the database functionality
 location = "data/data.db" # Location where the database will be generated
-save_completed = true # To avoid sending requests for downloads already downloaded
 
 [network]
 timeout = 10 # Time in seconds before a request times out

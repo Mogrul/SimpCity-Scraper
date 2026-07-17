@@ -55,7 +55,6 @@ class Config:
         self.database = DatabaseConfig(
             enabled = True,
             location = Path("data/data.db"),
-            save_completed = True
         )
 
     def load_config(self, config_path = Path('config.toml')):
@@ -82,7 +81,6 @@ class Config:
         database = data.get("database", {})
         enabled = database.get("enabled", True)
         location = database.get("location", "data/data.db")
-        save_completed = database.get("save_completed", True)
 
         # Arg configs
         args = load_args()
@@ -101,6 +99,5 @@ class Config:
 
         self.database = DatabaseConfig(
             enabled = enabled,
-            location = Path(location),
-            save_completed = save_completed
+            location = Path(location)
         )
