@@ -42,7 +42,8 @@ class Session:
                 response = self.session.post(
                     url = request.link,
                     params = request.params,
-                    headers = headers
+                    headers = headers,
+                    json = request.payload
                 )
 
             else:
@@ -57,9 +58,6 @@ class Session:
 
         # Handle response
         if response.status_code != 200:
-            self.logger.info(headers)
-            self.logger.error(response.headers)
-            os.abort()
             return self._on_error(request)
 
         try:

@@ -47,7 +47,7 @@ class Domain:
         links_to_download: list[Link] = []
 
         # Check links against completed in database if enabled
-        if self.database:
+        if getattr(self, "database", False):
             skipped = 0
             for link in self.links:
                 if (
@@ -118,7 +118,7 @@ class Domain:
                     failed += 1
                     continue
 
-                if self.database:
+                if getattr(self, "database", False):
                     self.database.add_completed(link.link)
 
                 for response in responses:
@@ -175,7 +175,13 @@ class Domain:
     def get_token(self) -> str:
         pass
 
-    def download(self, post: Post, link: Link, headers: dict[str, str] | None = None) -> DownloadResponse:
+    def download(
+            self,
+            post: Post,
+            link: Link,
+            params: dict[str, str] | None = None,
+            headers: dict[str, str] | None = None
+    ) -> DownloadResponse:
         file_path = self.create_file_path(post, link)
 
         if not file_path:
@@ -186,11 +192,23 @@ class Domain:
 
         download_link = link.link if not link.signed else link.signed
 
-        if headers:
-            return self.session.download(DownloadRequest(download_link, file_path, headers))
+        r_params = {}
+        r_headers = {}
+        if params:
+            for key, value in params.items():
+                r_params[key] = value
 
-        else:
-            return self.session.download(DownloadRequest(download_link, file_path))
+        if headers:
+            for key, value in headers.items():
+                r_headers[key] = value
+
+        request = DownloadRequest(
+            link = download_link,
+            destination = file_path,
+            headers = r_headers,
+            params = r_params
+        )
+        return self.session.download(request)
 
     def create_file_path(self, post: Post, link: Link) -> Path | None:
         file_link = link.link

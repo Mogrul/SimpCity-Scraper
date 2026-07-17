@@ -14,6 +14,7 @@ class Request:
     response_type: ResponseType
     params: dict[str, str] = field(default_factory = dict)
     headers: dict[str, str] = field(default_factory = dict)
+    payload: dict[str, str] = field(default_factory = dict)
 
 @dataclass
 class Response:

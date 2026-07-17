@@ -22,7 +22,7 @@ class Turbo(Domain):
             responses.append(self.file(post, link))
 
         else:
-            self.logger.critical(link.link)
+            self.logger.critical(f"Unsupported link: {link.link}")
 
         return responses
 
