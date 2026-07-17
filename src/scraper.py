@@ -1,7 +1,8 @@
+import base64
 from collections import defaultdict
 from datetime import datetime, timezone
 import logging
-from urllib.parse import urlparse, unquote
+from urllib.parse import urlparse, unquote, parse_qs
 
 from bs4 import BeautifulSoup, Tag
 
@@ -99,6 +100,14 @@ def get_posts(page: BeautifulSoup) -> tuple[dict[int, Post], list[Link]] | None:
                 signed = img.get("src")
                 if not isinstance(signed, str): continue
                 signed = signed.replace(".md", "")
+
+            # Decode redirects if present (base64)
+            if "/redirect/" in href:
+                encoded = parse_qs(parsed.query)["to"][0]
+                decoded = base64.urlsafe_b64decode(
+                    encoded + "=" * (-len(encoded) % 4)
+                ).decode("utf-8")
+                href = decoded
 
             cell_links.append(Link(post_id, href, domain, signed))
 
