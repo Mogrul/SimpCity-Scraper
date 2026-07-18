@@ -46,7 +46,7 @@ Downloaded files are named using the original post date and a unique identifier 
 - `-cd / --check-duplicates (PATH)`: Combined with `-i / --images` and or `-v / --videos` to check for duplicates without starting any downloads
 
 ## Config
-```yaml
+```toml
 [downloads]
 location = "Downloads" # Location to where the downloads will go
 skip_domains = ["bunkr.cr"] # Skip domains to download from, empty for all
