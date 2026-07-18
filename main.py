@@ -1,26 +1,22 @@
-from src.shared.logger import load_logger
-from src.simpcity import SimpCity
-from src.args import parse_args
+import logging
 
-from src.shared.config import Config
+from config import Config
+from database import Database
+from logger import load_logger
+from scraper import Scraper
+from session import Session
 
-import os
 
-if __name__ == "__main__":
-    load_logger()
-    
-    args = parse_args()
-    
-    config = Config()
-    success = config.load_config(args)
-    
-    if not success:
-        os._exit(0)
-    
-    success = config.verify_config()
-    
-    if not success:
-        os._exit(0)
+logger = load_logger()
+logger.setLevel(logging.INFO)
 
-    simpcity = SimpCity()
-    simpcity.scrape()
+config = Config()
+config.load_config()
+
+if config.database.enabled:
+    database = Database()
+
+session = Session()
+
+scraper = Scraper()
+scraper.run()

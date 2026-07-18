@@ -222,3 +222,5 @@ __marimo__/
 .*
 logs/
 output/
+data
+/SimpCityScraper.iml
