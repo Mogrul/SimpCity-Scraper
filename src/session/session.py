@@ -52,7 +52,7 @@ class Session:
                     headers = headers
                 )
 
-        except TimeoutError:
+        except requests.exceptions.Timeout:
             return self._on_timeout(request)
 
         # Handle response
