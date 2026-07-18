@@ -99,6 +99,8 @@ class Config:
         with open(config_path, "rb") as f:
             data = tomllib.load(f)
 
+        self.links.extend(data.get("links", []))
+
         # Download configs
         downloads = data.get("downloads", {})
         download_location = downloads.get("location", "Downloads")
@@ -133,7 +135,7 @@ class Config:
 
         # Arg configs
         args = load_args()
-        self.links = args.links
+        self.links.extend(args.links)
 
         self.network = NetworkConfig(
             timeout = network_timeout,
@@ -167,7 +169,7 @@ class Config:
 
     def handle_args(self, args: argparse.Namespace):
         if (
-            not args.links
+            not self.links
             and not self.downloads.watched_threads
             and not args.print_config
             and not args.check_duplicates
