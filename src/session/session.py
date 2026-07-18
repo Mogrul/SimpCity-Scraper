@@ -7,7 +7,7 @@ import requests
 from bs4 import BeautifulSoup
 
 from config import Config
-from enums import RequestType, ResponseType, StatusCode
+from session import RequestType, ResponseType, StatusCode
 from .models import DownloadRequest, DownloadResponse, Request, Response
 
 class Session:

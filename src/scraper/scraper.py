@@ -1,3 +1,4 @@
+import os
 from collections import defaultdict
 import logging
 from pathlib import Path
@@ -9,12 +10,14 @@ from bs4 import BeautifulSoup, Tag
 from config import Config
 from domains import DOMAINS
 from duplication import Duplication, DuplicationResult
-from enums import RequestType, ResponseType
+from session import RequestType, ResponseType
 from . import ThreadScraper, PostScraper
 from .models import *
 from session import Request, Session
 from shared.util import format_bytes
 from domains import DomainResult
+from .watched_scraper import WatchedScraper
+
 
 def normalise_thread_link(link: str) -> str | None:
     parsed = urlparse(link)
@@ -42,6 +45,15 @@ class Scraper:
 
     def run(self):
         thread_links = self.config.links
+
+        # Add watched thread to thread links if enabled
+        if self.config.downloads.watched_threads:
+            watched_links = WatchedScraper().get_watched()
+            thread_links.extend(watched_links)
+            self.logger.info(f"Found {len(watched_links)} watched threads")
+
+        # Create a set from thread_links to avoid duplicate entries
+        thread_links = set(thread_links)
 
         for thread_link in thread_links:
             thread_link = normalise_thread_link(thread_link)

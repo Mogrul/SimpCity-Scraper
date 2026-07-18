@@ -77,7 +77,8 @@ class Config:
 
         self.downloads = DownloadConfig(
             location = Path("Downloads"),
-            skip_domains = []
+            skip_domains = [],
+            watched_threads = True
         )
 
         self.database = DatabaseConfig(
@@ -102,6 +103,7 @@ class Config:
         downloads = data.get("downloads", {})
         download_location = downloads.get("location", "Downloads")
         skip_domains = downloads.get("skip_domains", [])
+        watched_thread = downloads.get("watched_threads", False)
 
         # Network configs
         network = data.get("network", {})
@@ -142,7 +144,8 @@ class Config:
 
         self.downloads = DownloadConfig(
             location = Path(download_location),
-            skip_domains = skip_domains
+            skip_domains = skip_domains,
+            watched_threads = watched_thread
         )
 
         self.database = DatabaseConfig(
@@ -165,10 +168,11 @@ class Config:
     def handle_args(self, args: argparse.Namespace):
         if (
             not args.links
+            and not self.downloads.watched_threads
             and not args.print_config
             and not args.check_duplicates
         ):
-            self.logger.critical(f"URL arguments required, do --help for more information.")
+            self.logger.critical(f"URL arguments or watched_thread in config required, do --help for more information.")
             os.abort()
 
         if args.print_config:
@@ -178,7 +182,8 @@ class Config:
                 f"          {f'Thread Limit:':<26} {self.thread_count:<20}\n\n"
                 "          Downloads:\n"
                 f"                {f'Download Location:':<20} {str(self.downloads.location):<20}\n"
-                f"                {f'Skip Domains:':<20} {str(self.downloads.skip_domains):<20}\n\n"
+                f"                {f'Skip Domains:':<20} {str(self.downloads.skip_domains):<20}\n"
+                f"                {f'Watched Threads:':<20} {str(self.downloads.watched_threads):<20}\n\n"
                 f"          Database:\n"
                 f"                {f'Enabled:':<20} {str(self.database.enabled):<20}\n"
                 f"                {f'Location:':<20} {str(self.database.location):<20}\n\n"
