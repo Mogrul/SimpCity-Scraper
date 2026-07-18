@@ -9,7 +9,7 @@ from config import Config
 from database import Database
 from enums import StatusCode
 from scraper import Post, Link, Thread
-from util import format_bytes, format_duration
+from shared.util import format_bytes, format_duration
 from session import DownloadResponse, DownloadRequest, Session
 from .models import DomainResult
 

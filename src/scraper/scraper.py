@@ -14,7 +14,7 @@ from duplication import Duplication, DuplicationResult
 from enums import RequestType, ResponseType
 from .models import *
 from session import Request, Session
-from util import format_bytes
+from shared.util import format_bytes
 from domains import DomainResult
 
 def normalise_thread_link(link: str) -> str | None:
