@@ -21,7 +21,7 @@ Downloaded files are named using the original post date and a unique identifier 
 - Open a terminal from that directory
 - Login to SimpCity on a browser and extract the sites cookies using a tool like [addon](https://addons.mozilla.org/en-GB/firefox/addon/get-cookies-txt-locally/)
 - Name the file `simpcity.txt` and place it into a directory called `.cookies` of the root directory
-- Run `.\SimpScraper.exe URL` and it should download to the value set in `config.yaml`
+- Run `.\SimpCityScraper-1.1.0-win-x86_64.exe URL` and it should download to the value set in `config.yaml`
 
 ### Source
 - Download the source using [github](https://github.com/Mogrul/SimpCity-Scraper/archive/refs/heads/main.zip) or `git clone https://github.com/Mogrul/SSDownloader`
@@ -33,46 +33,44 @@ Downloaded files are named using the original post date and a unique identifier 
 - Run the main.py URL and it should download to the value set in `config.yaml`
 
 ## Supported sites
-- https://turbo.cr/
-- https://goonbox.cr/
-- https://pixeldrain.com/
-- https://cyberdrop.cr/
-- https://bunkr.cr/
+- https://bunkr.cr
+- https://cyberdrop.cr
+- https://gofile.io
+- https://goonbox.cr
+- https://pixeldrain.com
+- https://turbo.cr
+
+## Arguments
+- `URLs`: Default required argument, a list of simpcity.cr thread URLs to scrape
+- `-pc / --print-config`: Prints the current configuration settings from config.toml
+- `-cd / --check-duplicates (PATH)`: Combined with `-i / --images` and or `-v / --videos` to check for duplicates without starting any downloads
 
 ## Config
 ```yaml
-# Download settings.
-downloads:
-  output: Downloads
-  
-  # Remove duplicate files after downloading thread.
-  remove_image_duplicates: True
-  remove_video_duplicates: True
-  similarity_threshold: 0.9 # % to delete files at .1 = 10%
+[downloads]
+location = "Downloads" # Location to where the downloads will go
+skip_domains = ["bunkr.cr"] # Skip domains to download from, empty for all
 
-  # Number of bytes to read/write at a time when downloading.
-  # 1048576 = 1 MiB
-  chunk_size: 1048576
+[database]
+enabled = false # Disable / Enable the database functionality
+location = "data/data.db" # Location where the database will be generated
 
-# Network and thread settings.
-network:
-  # HTTP request timeout in seconds.
-  timeout: 30
+[duplication]
+images = false # To check for duplicate images
+videos = false # To check for duplicate videos -- intensive
+threshold = 0.9 # Threshold to mark files as duplicate: 0.1 = 10% similarity
+samples = 3 # Amount of samples to get when checking video duplicates
+ffmpeg_path = "C:\\ffmpeg\\bin\\ffmpeg.exe" # Path to FFMPEG for video checking (cuda compatible version best)
+ffprobe_path = "C:\\ffmpeg\\bin\\ffprobe.exe" # For probing video files to get frame counts
 
-  # User agent to use in HTTP requests.
-  user_agent: {}
+[network]
+timeout = 10 # Time in seconds before a request times out
+chunk_size = 1048576 # Chunk size in bytes to download at
+cookies = ".cookies" # Folder where cookies.txt files are located
 
-  # Number of concurrent download workers.
-  workers: 10
-
-# Filtering options
-filters:
-  # List of domains to ignore.
-  # Leave empty to allow all domains.
-  excluded_domains: []
-
-  # Example:
-  # excluded_domains:
-  #   - bunkr
-  #   - goonbox
+[network.headers]
+User-Agent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/150.0.0.0 Safari/537.36"
+Accept = "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8"
+Accept-Encoding = "gzip, deflate, zstd"
+Connection = "keep-alive"
 ```
