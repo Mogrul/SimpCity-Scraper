@@ -7,10 +7,9 @@ from uuid import uuid5, NAMESPACE_URL
 
 from config import Config
 from database import Database
-from enums import StatusCode
 from scraper import Post, Link, Thread
 from shared.util import format_bytes, format_duration
-from session import DownloadResponse, DownloadRequest, Session
+from session import DownloadResponse, DownloadRequest, Session, StatusCode
 from .models import DomainResult
 
 class Domain:

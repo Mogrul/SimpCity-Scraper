@@ -3,9 +3,8 @@ import logging
 from bs4 import BeautifulSoup
 
 from domains import Domain
-from enums import RequestType, ResponseType, StatusCode
 from scraper import Post, Link
-from session import DownloadResponse, Request
+from session import DownloadResponse, Request, RequestType, ResponseType, StatusCode
 
 
 class Bunkr(Domain):

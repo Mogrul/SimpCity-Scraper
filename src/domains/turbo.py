@@ -1,7 +1,7 @@
 import logging
 
 from domains import Domain
-from enums import RequestType, ResponseType, StatusCode
+from session import RequestType, ResponseType, StatusCode
 from scraper import Post, Link
 from session import DownloadResponse, Request
 
