@@ -43,6 +43,12 @@ def load_args() -> argparse.Namespace:
         help = "Check duplicate videos"
     )
 
+    parser.add_argument(
+        "-w", "--watched",
+        action = "store_true",
+        help = "Import watched threads"
+    )
+
     return parser.parse_args()
 
 
@@ -136,6 +142,7 @@ class Config:
         # Arg configs
         args = load_args()
         self.links.extend(args.links)
+        watched_thread = args.watched
 
         self.network = NetworkConfig(
             timeout = network_timeout,
@@ -174,7 +181,7 @@ class Config:
             and not args.print_config
             and not args.check_duplicates
         ):
-            self.logger.critical(f"URL arguments or watched_thread in config required, do --help for more information.")
+            self.logger.critical(f"URL arguments or --watched required, do --help for more information.")
             os.abort()
 
         if args.print_config:
