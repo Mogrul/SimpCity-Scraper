@@ -10,9 +10,8 @@ from bs4 import BeautifulSoup, Tag
 
 from config import Config
 from domains import DOMAINS
-from duplication import Duplication
+from duplication import Duplication, DuplicationResult
 from enums import RequestType, ResponseType
-from models import DuplicationResult
 from .models import *
 from session import Request, Session
 from util import format_bytes

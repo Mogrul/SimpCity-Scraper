@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from pathlib import Path
+
 
 @dataclass
 class DuplicationResult:
@@ -11,8 +11,3 @@ class DuplicationResult:
         self.deleted_count += other.deleted_count
 
         return self
-
-@dataclass
-class MarkedDelete:
-    file1: Path
-    file2: Path

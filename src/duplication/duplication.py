@@ -13,7 +13,7 @@ import subprocess
 
 from config import Config
 from database import Database
-from models import MarkedDelete, DuplicationResult
+from .models import MarkedDelete, DuplicationResult
 from util import is_video, is_image, format_bytes
 
 
