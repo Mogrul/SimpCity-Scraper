@@ -4,7 +4,7 @@ import time
 
 from domains import Domain
 from enums import RequestType, ResponseType
-from models import Post, Link
+from scraper import Post, Link
 from session import DownloadResponse, Request
 
 

@@ -8,7 +8,7 @@ from uuid import uuid5, NAMESPACE_URL
 from config import Config
 from database import Database
 from enums import StatusCode
-from models import Post, Link, Thread
+from scraper import Post, Link, Thread
 from util import format_bytes, format_duration
 from session import DownloadResponse, DownloadRequest, Session
 from .models import DomainResult

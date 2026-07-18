@@ -4,7 +4,7 @@ from bs4 import BeautifulSoup
 
 from domains import Domain
 from enums import RequestType, ResponseType, StatusCode
-from models import Post, Link
+from scraper import Post, Link
 from session import DownloadResponse, Request
 
 

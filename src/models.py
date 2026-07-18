@@ -1,5 +1,4 @@
 from dataclasses import dataclass, field
-from datetime import datetime
 from pathlib import Path
 
 @dataclass
@@ -27,25 +26,6 @@ class DuplicationConfig:
 class DatabaseConfig:
     enabled: bool
     location: Path
-
-@dataclass
-class Thread:
-    id: int
-    username: str
-    tags: list[str] = field(default_factory = list)
-
-@dataclass
-class Post:
-    id: int
-    date: datetime
-
-@dataclass
-class Link:
-    post_id: int
-    link: str
-    domain: str
-    signed: str | None = None
-    filename: str | None = None
 
 @dataclass
 class DuplicationResult:
