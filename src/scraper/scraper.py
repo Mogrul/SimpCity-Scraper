@@ -1,6 +1,4 @@
-import base64
 from collections import defaultdict
-from datetime import datetime, timezone
 import logging
 from pathlib import Path
 from urllib.parse import urlparse, unquote, parse_qs
@@ -12,6 +10,7 @@ from config import Config
 from domains import DOMAINS
 from duplication import Duplication, DuplicationResult
 from enums import RequestType, ResponseType
+from . import ThreadScraper, PostScraper
 from .models import *
 from session import Request, Session
 from shared.util import format_bytes
@@ -30,156 +29,6 @@ def normalise_thread_link(link: str) -> str | None:
         return None
 
     return f"{parsed.scheme}://{parsed.netloc}/threads/{thread}"
-
-
-def get_thread(link: str, page: BeautifulSoup) -> Thread | None:
-    def get_id() -> int | None:
-        id_str = link.split(".")[-1]
-
-        try:
-            return int(id_str)
-
-        except ValueError:
-            return None
-
-    def get_username() -> str:
-        usr = link.split("/")[-1].split(".")[0]
-        items = usr.split("-")
-        titled = [item.title() for item in items[:2]]
-
-        return unquote(" ".join(titled).strip())
-
-    def get_tags() -> list[str]:
-        labels = page.find_all("span", {"class": "label"})
-        texts: list[str] = []
-
-        for label in labels:
-            text = label.get_text(strip = True)
-            texts.append(text)
-
-        return texts
-
-    id = get_id()
-    if not id:
-        return None
-
-    username = get_username()
-    tags = get_tags()
-
-    return Thread(id, username, tags)
-
-
-def get_max_page_num(page: BeautifulSoup) -> int:
-    main_nav = page.find("ul", {"class": "pageNav-main"})
-    if not main_nav: return 1
-
-    navs = main_nav.find_all("li", {"class": "pageNav-page"})
-    last_nav = navs[-1] # Max page num
-
-    try:
-        return int(last_nav.get_text(strip = True))
-
-    except ValueError:
-        return 1
-
-
-def get_posts(page: BeautifulSoup) -> tuple[dict[int, Post], list[Link]] | None:
-    def get_links_in_cell(post_id: int, post_cell: Tag) -> list[Link]:
-        cell_links = []
-
-        # Handle external links first
-        external_links = post_cell.find_all("a", {"class": "link--external"})
-
-        for external_link in external_links:
-            href = external_link.get("href")
-            if not isinstance(href, str): continue
-            parsed = urlparse(href)
-            domain = parsed.netloc
-
-            signed = None
-            if "goonbox.cr" in href and "/img/" in href:
-                # Get goonbox signed URL
-                img = external_link.find("img")
-                if not img: continue
-                signed = img.get("src")
-                if not isinstance(signed, str): continue
-                signed = signed.replace(".md", "")
-
-            # Decode redirects if present (base64)
-            if "/redirect/" in href:
-                encoded = parse_qs(parsed.query)["to"][0]
-                decoded = base64.urlsafe_b64decode(
-                    encoded + "=" * (-len(encoded) % 4)
-                ).decode("utf-8")
-                href = decoded
-                parsed = urlparse(href)
-                domain = parsed.netloc
-
-            cell_links.append(Link(post_id, href, domain, signed))
-
-        # Handle embeds
-        embeds = post_cell.find_all("iframe", {"class": "saint-iframe"})
-
-        for embed in embeds:
-            src = embed.get("src")
-            if not isinstance(src, str): continue
-            parsed = urlparse(src)
-            domain = parsed.netloc
-
-            signed = None
-            if "turbo.cr" in src and "/embed/" in src:
-                src = src.replace("/embed/", "/v/")
-
-            cell_links.append(Link(post_id, src, domain, signed))
-
-        return cell_links
-
-    def get_post_in_cell(post_cell: Tag) -> Post | None:
-        # Retrieve the ID
-        user_content = post_cell.find("div", {"class": "message-userContent"})
-        if not user_content: return None
-
-        post_id_str = user_content.get("data-lb-id")
-        if not isinstance(post_id_str, str): return None
-        id_str = post_id_str.split("-")[-1]
-
-        try:
-            id = int(id_str)
-
-        except ValueError:
-            return None
-
-        # Retrieve posted at
-        time = post_cell.find("time", {"class": "u-dt"})
-        if not time: return None
-        timestamp_str = time.get("data-timestamp")
-        if not isinstance(timestamp_str, str): return None
-
-        try:
-            timestamp = int(timestamp_str)
-
-        except ValueError:
-            return None
-
-        date = datetime.fromtimestamp(timestamp, tz = timezone.utc)
-
-        return Post(id, date)
-
-    posts: dict[int, Post] = {}
-    links = []
-
-    cells = page.find_all("div", {"class": "message-cell--main"})
-    cells = cells[:-1] # Last cell = message box
-
-    for cell in cells:
-        post = get_post_in_cell(cell)
-        if not post: return None
-        posts[post.id] = post
-
-        post_links = get_links_in_cell(post.id, cell)
-        links.extend(post_links)
-
-    return posts, links
 
 
 class Scraper:
@@ -208,13 +57,12 @@ class Scraper:
                 continue
 
             # Get thread data from first page
-            thread = get_thread(thread_link, page)
+            thread = ThreadScraper(page, thread_link).scrape()
             if not thread:
                 self.logger.warning(f"Failed to get thread: {thread_link}")
                 continue
 
             # Get max page number to recurse through pages
-            max_page_num = get_max_page_num(page)
             posts: dict[int, Post] = {}
             links: list[Link] = []
             with ThreadPoolExecutor(
@@ -225,7 +73,7 @@ class Scraper:
                 # Future -> page num
                 futures: dict[Future, int] = {
                     executor.submit(self.run_page, thread_link, page_num)
-                    : page_num for page_num in range(1, max_page_num + 1)
+                    : page_num for page_num in range(1, thread.max_page_num + 1)
                 }
 
                 for future in as_completed(futures.keys()):
@@ -243,7 +91,7 @@ class Scraper:
                     for key, value in page_posts.items():
                         posts[key] = value
 
-                    self.logger.info(f"{f'{counter}/{max_page_num}':<10} {thread_link}")
+                    self.logger.info(f"{f'{counter}/{thread.max_page_num}':<10} {thread_link}")
                     counter += 1
 
             self.logger.info(f"Found {len(posts)} posts, {len(links)} links in {thread_link}")
@@ -284,12 +132,12 @@ class Scraper:
             self.logger.warning(f"Failed to get page: {thread_link}")
             return {}, []
 
-        page_posts = get_posts(page)
-        if not page_posts:
+        posts = PostScraper(page).scrape()
+        if not posts:
             self.logger.warning(f"Failed to get posts: {thread_link}")
             return {}, []
 
-        page_posts, page_links = page_posts
+        page_posts, page_links = posts
 
         return page_posts, page_links
 
