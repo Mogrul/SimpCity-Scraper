@@ -23,7 +23,9 @@ class Duplication:
         self.config = Config()
         self.path = path
         self.completed_links = completed_links
-        self.database = Database()
+
+        if self.config.database.enabled:
+            self.database = Database()
 
     def get_files(self, videos: bool) -> list[Path]:
         files = [f for f in self.path.rglob("*") if f.is_file()]
@@ -294,7 +296,7 @@ class Duplication:
 
             # Try and get original link of downloaded file
             link = self.completed_links.get(deleted, None)
-            if link:
+            if link and getattr(self, "database", False):
                 self.database.add_duplicate(link)
 
             deleted.unlink()

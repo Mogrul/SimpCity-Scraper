@@ -1,4 +1,5 @@
 import argparse
+import logging
 import tomllib
 import os
 from pathlib import Path
@@ -18,6 +19,31 @@ def load_args() -> argparse.Namespace:
         help = "SimpCity Links"
     )
 
+    parser.add_argument(
+        "-pc", "--print-config",
+        action = "store_true",
+        help = "Prints the current configuration"
+    )
+
+    parser.add_argument(
+        "-cd", "--check-duplicates",
+        metavar = "PATH",
+        type = Path,
+        help = "Check for duplicate files in PATH"
+    )
+
+    parser.add_argument(
+        "-i", "--images",
+        action = "store_true",
+        help = "Check duplicate images"
+    )
+
+    parser.add_argument(
+        "-v", "--videos",
+        action = "store_true",
+        help = "Check duplicate videos"
+    )
+
     return parser.parse_args()
 
 
@@ -33,6 +59,8 @@ class Config:
     def __init__(self):
         if getattr(self, "thread_count", False):
             return
+
+        self.logger = logging.getLogger("Config")
 
         thread_count = os.process_cpu_count()
         self.thread_count = (
@@ -131,3 +159,56 @@ class Config:
             threshold = threshold,
             samples = samples
         )
+
+        # Finally handle args
+        self.handle_args(args)
+
+    def handle_args(self, args: argparse.Namespace):
+        if (
+            not args.links
+            and not args.print_config
+            and not args.check_duplicates
+        ):
+            self.logger.critical(f"URL arguments required, do --help for more information.")
+            os.abort()
+
+        if args.print_config:
+            # Print config
+            self.logger.info(
+                "Program Configuration:\n"
+                f"          {f'Thread Limit:':<26} {self.thread_count:<20}\n\n"
+                "          Downloads:\n"
+                f"                {f'Download Location:':<20} {str(self.downloads.location):<20}\n"
+                f"                {f'Skip Domains:':<20} {str(self.downloads.skip_domains):<20}\n\n"
+                f"          Database:\n"
+                f"                {f'Enabled:':<20} {str(self.database.enabled):<20}\n"
+                f"                {f'Location:':<20} {str(self.database.location):<20}\n\n"
+                "          Duplication:\n"
+                f"                {f'Images':<20} {str(self.duplication.images):<20}\n"
+                f"                {f'Videos':<20} {str(self.duplication.videos):<20}\n"
+                f"                {f'Threshold:':<20} {str(self.duplication.threshold):<20}\n"
+                f"                {f'Samples:':<20} {str(self.duplication.samples):<20}\n"
+                f"                {f'FFMPEG Path:':<20} {str(self.duplication.ffmpeg_path):<20}\n"
+                f"                {f'FFProbe Path:':<20} {str(self.duplication.ffprobe_path):<20}\n\n"
+                "          Network:\n"
+                f"                {f'Timeout:':<20} {str(self.network.timeout):<20}\n"
+                f"                {f'Chunk Size:':<20} {str(self.network.chunk_size):<20}\n"
+                f"                {f'Cookies:':<20} {str(self.network.cookies):<20}\n"
+            )
+            os.abort()
+
+        if args.check_duplicates:
+            if not args.images and not args.videos:
+                self.logger.error(f"When using --check_duplicates, you must select and or -i for images, -v for videos")
+                os.abort()
+
+            path = args.check_duplicates
+
+            from duplication import Duplication
+            duplication = Duplication(path, {})
+
+            if args.images:
+                duplication.check_images()
+
+            if args.videos:
+                duplication.check_videos()
