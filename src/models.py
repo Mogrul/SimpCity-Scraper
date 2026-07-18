@@ -2,40 +2,6 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
 
-from bs4 import BeautifulSoup
-
-from enums import RequestType, ResponseType, StatusCode
-
-
-@dataclass
-class Request:
-    link: str
-    request_type: RequestType
-    response_type: ResponseType
-    params: dict[str, str] = field(default_factory = dict)
-    headers: dict[str, str] = field(default_factory = dict)
-    payload: dict[str, str] = field(default_factory = dict)
-
-@dataclass
-class Response:
-    request: Request
-    status_code: StatusCode
-    data: dict | BeautifulSoup | str | None = None
-
-@dataclass
-class DownloadRequest:
-    link: str
-    destination: Path
-    headers: dict[str, str] = field(default_factory = dict)
-    params: dict[str, str] = field(default_factory = dict)
-
-@dataclass
-class DownloadResponse:
-    status_code: StatusCode
-    request: DownloadRequest | None = None
-    time_taken: float | None = None
-    file_size: int | None = None
-
 @dataclass
 class DownloadConfig:
     location: Path

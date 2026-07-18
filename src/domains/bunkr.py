@@ -4,7 +4,8 @@ from bs4 import BeautifulSoup
 
 from domains import Domain
 from enums import RequestType, ResponseType, StatusCode
-from models import Post, Link, DownloadResponse, Request
+from models import Post, Link
+from session import DownloadResponse, Request
 
 
 class Bunkr(Domain):

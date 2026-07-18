@@ -1,6 +1,5 @@
 import json
 import logging
-import os
 import time
 from http.cookiejar import MozillaCookieJar
 
@@ -9,7 +8,7 @@ from bs4 import BeautifulSoup
 
 from config import Config
 from enums import RequestType, ResponseType, StatusCode
-from models import Request, Response, DownloadRequest, DownloadResponse
+from .models import DownloadRequest, DownloadResponse, Request, Response
 
 class Session:
     _instance = None

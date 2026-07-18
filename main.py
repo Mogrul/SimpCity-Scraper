@@ -6,7 +6,6 @@ from logger import load_logger
 from scraper import Scraper
 from session import Session
 
-
 logger = load_logger()
 logger.setLevel(logging.INFO)
 

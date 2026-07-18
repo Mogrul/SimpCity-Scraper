@@ -12,8 +12,9 @@ from config import Config
 from domains import DOMAINS
 from duplication import Duplication
 from enums import RequestType, ResponseType
-from models import Request, Thread, Link, Post, DomainResult, DuplicationResult
-from session import Session
+from models import Thread, Link, Post, DomainResult, DuplicationResult
+from session.session import Session
+from session.models import Request
 from util import format_bytes
 
 
@@ -351,7 +352,7 @@ class Scraper:
         for path, result in self.duplication_results.items():
             self.logger.info(
                 f"{path}:\n"
-                f"          {'Deleted:':<20}{f'{result.deleted_count}':>15}\n"
+                f"{'Deleted:':<20}{f'{result.deleted_count}':>15}\n"
                 f"          {'Saved:':<20}{f'{format_bytes(result.bytes_saved)}':>15}\n"
             )
 
