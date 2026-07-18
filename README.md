@@ -21,7 +21,7 @@ Downloaded files are named using the original post date and a unique identifier 
 - Open a terminal from that directory
 - Login to SimpCity on a browser and extract the sites cookies using a tool like [addon](https://addons.mozilla.org/en-GB/firefox/addon/get-cookies-txt-locally/)
 - Name the file `simpcity.txt` and place it into a directory called `.cookies` of the root directory
-- Run `.\SimpCityScraper-1.1.0-win-x86_64.exe URL` and it should download to the value set in `config.yaml`
+- Run `.\SimpCityScraper-1.1.1-win-x86_64.exe URL` and it should download to the value set in `config.yaml`
 
 ### Source
 - Download the source using [github](https://github.com/Mogrul/SimpCity-Scraper/archive/refs/heads/main.zip) or `git clone https://github.com/Mogrul/SSDownloader`
@@ -44,12 +44,17 @@ Downloaded files are named using the original post date and a unique identifier 
 - `URLs`: Default required argument, a list of simpcity.cr thread URLs to scrape
 - `-pc / --print-config`: Prints the current configuration settings from config.toml
 - `-cd / --check-duplicates (PATH)`: Combined with `-i / --images` and or `-v / --videos` to check for duplicates without starting any downloads
+- `-w / --watched`: Automatically import your watched threads to the download list
+- `--debug`: Set the output to terminal to debug mode, printing a more verbose output
 
 ## Config
 ```toml
+links = [] # Links to download from SimpCity
+
 [downloads]
 location = "Downloads" # Location to where the downloads will go
 skip_domains = ["bunkr.cr"] # Skip domains to download from, empty for all
+watched_threads = false # Extract watched threads from your simpcity account to download
 
 [database]
 enabled = false # Disable / Enable the database functionality
