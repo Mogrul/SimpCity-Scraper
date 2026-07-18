@@ -1,3 +1,5 @@
+from .models import *
+
 from .domain import Domain
 from .bunkr import Bunkr
 from .gofile import GoFile

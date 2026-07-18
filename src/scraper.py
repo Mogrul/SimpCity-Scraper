@@ -12,11 +12,11 @@ from config import Config
 from domains import DOMAINS
 from duplication import Duplication
 from enums import RequestType, ResponseType
-from models import Thread, Link, Post, DomainResult, DuplicationResult
+from models import Thread, Link, Post, DuplicationResult
 from session.session import Session
 from session.models import Request
 from util import format_bytes
-
+from domains import DomainResult
 
 def normalise_thread_link(link: str) -> str | None:
     parsed = urlparse(link)
