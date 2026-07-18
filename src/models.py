@@ -1,31 +1,5 @@
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
-
-@dataclass
-class DownloadConfig:
-    location: Path
-    skip_domains: list[str] = field(default_factory = list)
-
-@dataclass
-class NetworkConfig:
-    timeout: int
-    chunk_size: int
-    cookies: Path
-    headers: dict = field(default_factory = dict)
-
-@dataclass
-class DuplicationConfig:
-    images: bool
-    videos: bool
-    ffmpeg_path: Path
-    ffprobe_path: Path
-    threshold: float
-    samples: int
-
-@dataclass
-class DatabaseConfig:
-    enabled: bool
-    location: Path
 
 @dataclass
 class DuplicationResult:

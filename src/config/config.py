@@ -4,8 +4,7 @@ import tomllib
 import os
 from pathlib import Path
 
-from models import NetworkConfig, DownloadConfig, DatabaseConfig, DuplicationConfig
-
+from .models import *
 
 def load_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
