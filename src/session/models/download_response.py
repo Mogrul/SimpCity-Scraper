@@ -1,6 +1,6 @@
 from dataclasses import dataclass
 
-from enums import StatusCode
+from session.enums import StatusCode
 from .download_request import DownloadRequest
 
 
