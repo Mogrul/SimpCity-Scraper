@@ -1,5 +1,4 @@
 import argparse
-import logging
 import tomllib
 import os
 from pathlib import Path
@@ -49,6 +48,12 @@ def load_args() -> argparse.Namespace:
         help = "Import watched threads"
     )
 
+    parser.add_argument(
+        "--debug",
+        action = "store_true",
+        help = "Enable debug mode"
+    )
+
     return parser.parse_args()
 
 
@@ -65,14 +70,13 @@ class Config:
         if getattr(self, "thread_count", False):
             return
 
-        self.logger = logging.getLogger("Config")
-
         thread_count = os.process_cpu_count()
         self.thread_count = (
             4 if not thread_count
             else int(thread_count / 2)
         )
         self.links: list[str] = []
+        self.debug = False
 
         self.network = NetworkConfig(
             timeout = 10,
@@ -143,6 +147,7 @@ class Config:
         args = load_args()
         self.links.extend(args.links)
         watched_thread = args.watched
+        self.debug = args.debug
 
         self.network = NetworkConfig(
             timeout = network_timeout,
@@ -181,12 +186,12 @@ class Config:
             and not args.print_config
             and not args.check_duplicates
         ):
-            self.logger.critical(f"URL arguments or --watched required, do --help for more information.")
+            print(f"URL arguments or --watched required, do --help for more information.")
             os.abort()
 
         if args.print_config:
             # Print config
-            self.logger.info(
+            print(
                 "Program Configuration:\n"
                 f"          {f'Thread Limit:':<26} {self.thread_count:<20}\n\n"
                 "          Downloads:\n"
@@ -212,7 +217,7 @@ class Config:
 
         if args.check_duplicates:
             if not args.images and not args.videos:
-                self.logger.error(f"When using --check_duplicates, you must select and or -i for images, -v for videos")
+                print(f"When using --check_duplicates, you must select and or -i for images, -v for videos")
                 os.abort()
 
             path = args.check_duplicates
@@ -225,3 +230,5 @@ class Config:
 
             if args.videos:
                 duplication.check_videos()
+
+            os.abort()
