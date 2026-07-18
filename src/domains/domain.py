@@ -8,10 +8,10 @@ from uuid import uuid5, NAMESPACE_URL
 from config import Config
 from database import Database
 from enums import StatusCode
-from models import Post, Link, DownloadResponse, DownloadRequest, Thread, DomainResult
-from session import Session
-from util import format_bytes, format_duration
-
+from scraper import Post, Link, Thread
+from shared.util import format_bytes, format_duration
+from session import DownloadResponse, DownloadRequest, Session
+from .models import DomainResult
 
 class Domain:
     def __init__(

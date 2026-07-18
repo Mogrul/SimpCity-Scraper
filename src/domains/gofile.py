@@ -3,8 +3,10 @@ import logging
 import time
 
 from domains import Domain
-from enums import StatusCode, RequestType, ResponseType
-from models import Post, Link, DownloadResponse, Request
+from enums import RequestType, ResponseType
+from scraper import Post, Link
+from session import DownloadResponse, Request
+
 
 
 class GoFile(Domain):

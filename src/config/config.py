@@ -1,11 +1,9 @@
 import argparse
-import logging
 import tomllib
 import os
 from pathlib import Path
 
-from models import NetworkConfig, DownloadConfig, DatabaseConfig, DuplicationConfig
-
+from .models import *
 
 def load_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
@@ -44,6 +42,18 @@ def load_args() -> argparse.Namespace:
         help = "Check duplicate videos"
     )
 
+    parser.add_argument(
+        "-w", "--watched",
+        action = "store_true",
+        help = "Import watched threads"
+    )
+
+    parser.add_argument(
+        "--debug",
+        action = "store_true",
+        help = "Enable debug mode"
+    )
+
     return parser.parse_args()
 
 
@@ -60,14 +70,13 @@ class Config:
         if getattr(self, "thread_count", False):
             return
 
-        self.logger = logging.getLogger("Config")
-
         thread_count = os.process_cpu_count()
         self.thread_count = (
             4 if not thread_count
             else int(thread_count / 2)
         )
         self.links: list[str] = []
+        self.debug = False
 
         self.network = NetworkConfig(
             timeout = 10,
@@ -78,7 +87,8 @@ class Config:
 
         self.downloads = DownloadConfig(
             location = Path("Downloads"),
-            skip_domains = []
+            skip_domains = [],
+            watched_threads = True
         )
 
         self.database = DatabaseConfig(
@@ -99,10 +109,13 @@ class Config:
         with open(config_path, "rb") as f:
             data = tomllib.load(f)
 
+        self.links.extend(data.get("links", []))
+
         # Download configs
         downloads = data.get("downloads", {})
         download_location = downloads.get("location", "Downloads")
         skip_domains = downloads.get("skip_domains", [])
+        watched_thread = downloads.get("watched_threads", False)
 
         # Network configs
         network = data.get("network", {})
@@ -132,7 +145,9 @@ class Config:
 
         # Arg configs
         args = load_args()
-        self.links = args.links
+        self.links.extend(args.links)
+        watched_thread = args.watched
+        self.debug = args.debug
 
         self.network = NetworkConfig(
             timeout = network_timeout,
@@ -143,7 +158,8 @@ class Config:
 
         self.downloads = DownloadConfig(
             location = Path(download_location),
-            skip_domains = skip_domains
+            skip_domains = skip_domains,
+            watched_threads = watched_thread
         )
 
         self.database = DatabaseConfig(
@@ -165,21 +181,23 @@ class Config:
 
     def handle_args(self, args: argparse.Namespace):
         if (
-            not args.links
+            not self.links
+            and not self.downloads.watched_threads
             and not args.print_config
             and not args.check_duplicates
         ):
-            self.logger.critical(f"URL arguments required, do --help for more information.")
+            print(f"URL arguments or --watched required, do --help for more information.")
             os.abort()
 
         if args.print_config:
             # Print config
-            self.logger.info(
+            print(
                 "Program Configuration:\n"
                 f"          {f'Thread Limit:':<26} {self.thread_count:<20}\n\n"
                 "          Downloads:\n"
                 f"                {f'Download Location:':<20} {str(self.downloads.location):<20}\n"
-                f"                {f'Skip Domains:':<20} {str(self.downloads.skip_domains):<20}\n\n"
+                f"                {f'Skip Domains:':<20} {str(self.downloads.skip_domains):<20}\n"
+                f"                {f'Watched Threads:':<20} {str(self.downloads.watched_threads):<20}\n\n"
                 f"          Database:\n"
                 f"                {f'Enabled:':<20} {str(self.database.enabled):<20}\n"
                 f"                {f'Location:':<20} {str(self.database.location):<20}\n\n"
@@ -199,7 +217,7 @@ class Config:
 
         if args.check_duplicates:
             if not args.images and not args.videos:
-                self.logger.error(f"When using --check_duplicates, you must select and or -i for images, -v for videos")
+                print(f"When using --check_duplicates, you must select and or -i for images, -v for videos")
                 os.abort()
 
             path = args.check_duplicates
@@ -212,3 +230,5 @@ class Config:
 
             if args.videos:
                 duplication.check_videos()
+
+            os.abort()

@@ -2,7 +2,8 @@ import logging
 
 from domains import Domain
 from enums import ResponseType, RequestType, StatusCode
-from models import Post, Link, DownloadResponse, Request
+from scraper import Post, Link
+from session import DownloadResponse, Request
 
 
 class CyberDrop(Domain):

@@ -1,6 +1,9 @@
+links = [] # Links to download from SimpCity
+
 [downloads]
 location = "Downloads" # Location to where the downloads will go
-skip_domains = [] # Skip domains to download from, empty for all
+skip_domains = ["bunkr.cr"] # Skip domains to download from, empty for all
+watched_threads = false # Extract watched threads from your simpcity account to download
 
 [database]
 enabled = false # Disable / Enable the database functionality

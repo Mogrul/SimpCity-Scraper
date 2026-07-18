@@ -1,7 +1,7 @@
 import io
 import json
 import logging
-from concurrent.futures import ThreadPoolExecutor, as_completed, FIRST_COMPLETED, Future
+from concurrent.futures import ThreadPoolExecutor, as_completed, Future
 from json import JSONDecodeError
 from pathlib import Path
 
@@ -13,8 +13,8 @@ import subprocess
 
 from config import Config
 from database import Database
-from models import MarkedDelete, DuplicationResult
-from util import is_video, is_image, format_bytes
+from .models import MarkedDelete, DuplicationResult
+from shared.util import is_video, is_image, format_bytes
 
 
 class Duplication:
